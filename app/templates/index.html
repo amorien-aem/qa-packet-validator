@@ -24,31 +24,34 @@ document.querySelector('form').onsubmit = async function(e) {
 	e.preventDefault();
 	document.getElementById('download-link').innerText = '';
 	const formData = new FormData(this);
-	const res = await fetch('/api/validate', {method: 'POST', body: formData});
-	const data = await res.json();
-	if (data.progressKey) {
-		document.getElementById('progress-container').style.display = '';
-		const progressBar = document.getElementById('progress-bar');
-		const progressPercent = document.getElementById('progress-percent');
-		let percent = 0;
-		let pollInterval = setInterval(async () => {
-			const resp = await fetch(`/api/progress/${data.progressKey}`);
-			const prog = await resp.json();
-			percent = prog.percent;
-			progressBar.value = percent;
-			progressPercent.innerText = percent + '%';
-			if (percent >= 100) {
-				clearInterval(pollInterval);
-				// Try to fetch the CSV filename (assume same as uploaded file with .csv)
-				// Optionally, you could return the filename from the progress endpoint or store it globally
-				// For now, show a generic download link
-				document.getElementById('download-link').innerHTML =
-					`<a href="/download/${formData.get('file').name.replace(/\.[^.]+$/, '.csv')}" download>Download CSV</a>`;
-				document.getElementById('progress-container').style.display = 'none';
-			}
-		}, 1000);
-	} else {
-		document.getElementById('download-link').innerText = 'Validation failed.';
+	try {
+		const res = await fetch('/api/validate', {method: 'POST', body: formData});
+		const data = await res.json();
+		if (res.ok && data.progressKey) {
+			document.getElementById('progress-container').style.display = '';
+			const progressBar = document.getElementById('progress-bar');
+			const progressPercent = document.getElementById('progress-percent');
+			let percent = 0;
+			let pollInterval = setInterval(async () => {
+				const resp = await fetch(`/api/progress/${data.progressKey}`);
+				const prog = await resp.json();
+				percent = prog.percent;
+				progressBar.value = percent;
+				progressPercent.innerText = percent + '%';
+				if (percent >= 100) {
+					clearInterval(pollInterval);
+					document.getElementById('download-link').innerHTML =
+						`<a href="/download/${formData.get('file').name.replace(/\.[^.]+$/, '.csv')}" download>Download CSV</a>`;
+					document.getElementById('progress-container').style.display = 'none';
+				}
+			}, 1000);
+		} else {
+			let msg = 'Validation failed.';
+			if (data && data.error) msg += ' ' + data.error;
+			document.getElementById('download-link').innerText = msg;
+		}
+	} catch (err) {
+		document.getElementById('download-link').innerText = 'Validation failed. ' + err;
 	}
 }
 </script>
