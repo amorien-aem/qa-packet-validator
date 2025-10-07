@@ -1,5 +1,8 @@
 Flask
-PyMuPDF
-openpyxl
-matplotlib
 pandas
+PyMuPDF
+matplotlib
+openpyxl
+pytesseract
+Pillow
+Werkzeug

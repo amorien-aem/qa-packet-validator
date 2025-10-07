@@ -10,6 +10,9 @@ from collections import defaultdict
 from openpyxl import Workbook
 from openpyxl.styles import Font
 from openpyxl.worksheet.table import Table, TableStyleInfo
+import pytesseract
+from PIL import Image
+import io
 
 UPLOAD_FOLDER = os.path.join(os.path.dirname(__file__), 'uploads')
 EXPORTS_FOLDER = os.path.join(os.path.dirname(__file__), 'exports')
@@ -24,6 +27,16 @@ app.config['EXPORTS_FOLDER'] = EXPORTS_FOLDER
 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+def extract_text_with_ocr(page):
+    text = page.get_text()
+    if text.strip():
+        return text
+    # Fallback to OCR if no text found
+    pix = page.get_pixmap(dpi=300)
+    img = Image.open(io.BytesIO(pix.tobytes("png")))
+    text = pytesseract.image_to_string(img)
+    return text
 
 def validate_pdf(pdf_path, export_dir):
     base_name = os.path.splitext(os.path.basename(pdf_path))[0]
@@ -76,7 +89,7 @@ def validate_pdf(pdf_path, export_dir):
 
     for page_num in range(len(doc)):
         page = doc.load_page(page_num)
-        text = page.get_text()
+        text = extract_text_with_ocr(page)
         fields = extract_fields(text)
         all_fields.append(fields)
 
