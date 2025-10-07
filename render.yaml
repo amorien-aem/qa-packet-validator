@@ -1,14 +1,6 @@
 services:
   - type: web
     name: qa-packet-validator
-    env: python
+    env: docker
     plan: free
-    buildCommand: |
-      apt-get update && apt-get install -y tesseract-ocr
-      ./render-build.sh || true
-      pip install -r requirements.txt
-    startCommand: gunicorn app.app:app --bind 0.0.0.0:10000
-    envVars:
-      - key: PORT
-        value: 10000
     autoDeploy: true
