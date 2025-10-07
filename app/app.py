@@ -1,3 +1,10 @@
+from flask import session
+import threading
+import time
+
+# In-memory progress store (for demo; use Redis or DB for production)
+progress_store = {}
+
 import os
 from flask import Flask, request, send_from_directory, jsonify, render_template_string
 from werkzeug.utils import secure_filename
@@ -38,7 +45,7 @@ def extract_text_with_ocr(page):
     text = pytesseract.image_to_string(img)
     return text
 
-def validate_pdf(pdf_path, export_dir):
+def validate_pdf(pdf_path, export_dir, progress_key=None):
     base_name = os.path.splitext(os.path.basename(pdf_path))[0]
     csv_path = os.path.join(export_dir, f"{base_name}_validation_summary.csv")
     excel_path = os.path.join(export_dir, f"{base_name}_validation_summary.xlsx")
@@ -87,7 +94,8 @@ def validate_pdf(pdf_path, export_dir):
 
     doc = fitz.open(pdf_path)
 
-    for page_num in range(len(doc)):
+    total_pages = len(doc)
+    for page_num in range(total_pages):
         page = doc.load_page(page_num)
         text = extract_text_with_ocr(page)
         fields = extract_fields(text)
@@ -103,6 +111,10 @@ def validate_pdf(pdf_path, export_dir):
             if field in fields and not validate_numerical(field, fields[field]):
                 anomalies.append([page_num + 1, field, f"Out of range: {fields[field]}"])
                 critical_issues.append([page_num + 1, field, fields[field]])
+
+        # Update progress
+        if progress_key:
+            progress_store[progress_key] = int(((page_num + 1) / total_pages) * 100)
 
     for field in ["Part Number", "Lot Number", "Date"]:
         if not check_consistency(field):
@@ -151,20 +163,26 @@ def validate_pdf(pdf_path, export_dir):
 
     return csv_path, excel_path, dashboard_path, len(anomalies), len(critical_issues)
 
-def validate_file(filepath):
+def validate_file(filepath, progress_key=None):
     # If PDF, run PDF validation, else fallback to dummy
     if filepath.lower().endswith('.pdf'):
         df = None
-        csv_path, excel_path, dashboard_path, anomaly_count, critical_count = validate_pdf(filepath, EXPORTS_FOLDER)
+        csv_path, excel_path, dashboard_path, anomaly_count, critical_count = validate_pdf(filepath, EXPORTS_FOLDER, progress_key)
         # For download, return the CSV as DataFrame
+        import logging
+        logging.warning(f"[validate_file] CSV path: {csv_path} exists: {os.path.exists(csv_path)}")
         df = pd.read_csv(csv_path)
+        if progress_key:
+            progress_store[progress_key] = 100
         return df, os.path.basename(csv_path)
     else:
         data = {'filename': [os.path.basename(filepath)], 'status': ['validated']}
         df = pd.DataFrame(data)
         csv_filename = os.path.splitext(os.path.basename(filepath))[0] + '.csv'
         csv_path = os.path.join(EXPORTS_FOLDER, csv_filename)
+        import logging
         df.to_csv(csv_path, index=False)
+        logging.warning(f"[validate_file] Dummy CSV path: {csv_path} exists: {os.path.exists(csv_path)}")
         return df, csv_filename
 
 def export_to_csv(df, csv_path):
@@ -209,17 +227,34 @@ def api_validate():
         upload_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
         file.save(upload_path)
 
-        # Validate and export
-        df, csv_filename = validate_file(upload_path)
-        # CSV already saved in validate_file
-        return jsonify({'csvFilename': csv_filename})
+        # Generate a unique progress key (could use session or uuid)
+        progress_key = filename + str(int(time.time()))
+        progress_store[progress_key] = 0
+
+        def run_validation():
+            validate_file(upload_path, progress_key)
+
+        # Run validation in a background thread
+        thread = threading.Thread(target=run_validation)
+        thread.start()
+
+        return jsonify({'progressKey': progress_key})
+# Progress endpoint
+@app.route('/api/progress/<progress_key>', methods=['GET'])
+def get_progress(progress_key):
+    percent = progress_store.get(progress_key, 0)
+    return jsonify({'percent': percent})
     return jsonify({'error': 'Invalid file type'}), 400
 
 @app.route('/download/<csv_filename>', methods=['GET'])
 def download_csv(csv_filename):
+    import logging
     try:
+        full_path = os.path.join(app.config['EXPORTS_FOLDER'], csv_filename)
+        logging.warning(f"[download_csv] Download requested: {full_path} exists: {os.path.exists(full_path)}")
         return send_from_directory(app.config['EXPORTS_FOLDER'], csv_filename, as_attachment=True)
     except FileNotFoundError:
+        logging.error(f"[download_csv] File not found: {csv_filename}")
         return "File not found", 404
 
 if __name__ == '__main__':

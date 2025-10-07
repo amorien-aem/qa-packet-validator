@@ -13,17 +13,40 @@
 	<input type="file" name="file">
 	<input type="submit" value="Upload and Validate">
 </form>
+<div id="progress-container" style="display:none; margin-top:10px;">
+	<label for="progress-bar">Validation Progress:</label>
+	<progress id="progress-bar" value="0" max="100" style="width:300px;"></progress>
+	<span id="progress-percent">0%</span>
+</div>
 <div id="download-link"></div>
 <script>
 document.querySelector('form').onsubmit = async function(e) {
 	e.preventDefault();
+	document.getElementById('download-link').innerText = '';
 	const formData = new FormData(this);
 	const res = await fetch('/api/validate', {method: 'POST', body: formData});
 	const data = await res.json();
-	if (data.csvFilename) {
-		document.getElementById('download-link').innerHTML =
-			`<a href="/download/${data.csvFilename}" download>Download CSV</a>`;
-		window.location.href = `/download/${data.csvFilename}`;
+	if (data.progressKey) {
+		document.getElementById('progress-container').style.display = '';
+		const progressBar = document.getElementById('progress-bar');
+		const progressPercent = document.getElementById('progress-percent');
+		let percent = 0;
+		let pollInterval = setInterval(async () => {
+			const resp = await fetch(`/api/progress/${data.progressKey}`);
+			const prog = await resp.json();
+			percent = prog.percent;
+			progressBar.value = percent;
+			progressPercent.innerText = percent + '%';
+			if (percent >= 100) {
+				clearInterval(pollInterval);
+				// Try to fetch the CSV filename (assume same as uploaded file with .csv)
+				// Optionally, you could return the filename from the progress endpoint or store it globally
+				// For now, show a generic download link
+				document.getElementById('download-link').innerHTML =
+					`<a href="/download/${formData.get('file').name.replace(/\.[^.]+$/, '.csv')}" download>Download CSV</a>`;
+				document.getElementById('progress-container').style.display = 'none';
+			}
+		}, 1000);
 	} else {
 		document.getElementById('download-link').innerText = 'Validation failed.';
 	}
