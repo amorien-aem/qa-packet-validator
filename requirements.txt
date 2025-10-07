@@ -2,3 +2,4 @@ Flask
 PyMuPDF
 openpyxl
 matplotlib
+pandas
