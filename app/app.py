@@ -305,11 +305,22 @@ def api_validate():
 
         def run_validation():
             try:
-                validate_file(upload_path, progress_key, progress_key)
+                # Always attempt validation and export, even if errors occur
+                df, csv_filename = validate_file(upload_path, progress_key, progress_key)
+                progress_store[progress_key]['csv_filename'] = csv_filename
             except Exception as e:
-                progress_store[progress_key]['done'] = True
-                progress_store[progress_key]['csv_filename'] = None
+                # On error, still try to export a minimal CSV for the user
+                error_csv = os.path.splitext(filename)[0] + "_validation_summary.csv"
+                error_csv_path = os.path.join(EXPORTS_FOLDER, error_csv)
+                with open(error_csv_path, "w", newline='') as f:
+                    writer = csv.writer(f)
+                    writer.writerow(["Error"])
+                    writer.writerow([str(e)])
+                progress_store[progress_key]['csv_filename'] = error_csv
                 print(f"Validation error: {e}")
+            finally:
+                progress_store[progress_key]['percent'] = 100
+                progress_store[progress_key]['done'] = True
 
         # Run validation in a background thread
         thread = threading.Thread(target=run_validation)
