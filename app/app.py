@@ -20,6 +20,7 @@ from openpyxl.worksheet.table import Table, TableStyleInfo
 import pytesseract
 from PIL import Image
 import io
+import uuid
 
 UPLOAD_FOLDER = os.path.join(os.path.dirname(__file__), 'uploads')
 EXPORTS_FOLDER = os.path.join(os.path.dirname(__file__), 'exports')
@@ -40,12 +41,13 @@ def extract_text_with_ocr(page):
     if text.strip():
         return text
     # Fallback to OCR if no text found
-    pix = page.get_pixmap(dpi=300)
+    pix = page.get_pixmap(dpi=150)
     img = Image.open(io.BytesIO(pix.tobytes("png")))
     text = pytesseract.image_to_string(img)
+    img.close()
     return text
 
-def validate_pdf(pdf_path, export_dir, progress_key=None):
+def validate_pdf(pdf_path, export_dir, progress_key=None, result_key=None):
     base_name = os.path.splitext(os.path.basename(pdf_path))[0]
     csv_path = os.path.join(export_dir, f"{base_name}_validation_summary.csv")
     excel_path = os.path.join(export_dir, f"{base_name}_validation_summary.xlsx")
@@ -93,7 +95,6 @@ def validate_pdf(pdf_path, export_dir, progress_key=None):
         return len(set(values)) == 1
 
     doc = fitz.open(pdf_path)
-
     total_pages = len(doc)
     for page_num in range(total_pages):
         page = doc.load_page(page_num)
@@ -114,7 +115,7 @@ def validate_pdf(pdf_path, export_dir, progress_key=None):
 
         # Update progress
         if progress_key:
-            progress_store[progress_key] = int(((page_num + 1) / total_pages) * 100)
+            progress_store[progress_key]['percent'] = int(((page_num + 1) / total_pages) * 100)
 
     for field in ["Part Number", "Lot Number", "Date"]:
         if not check_consistency(field):
@@ -161,28 +162,31 @@ def validate_pdf(pdf_path, export_dir, progress_key=None):
     plt.tight_layout()
     plt.savefig(dashboard_path)
 
+    # Save result in progress_store for robust retrieval
+    if progress_key and result_key:
+        progress_store[progress_key]['percent'] = 100
+        progress_store[progress_key]['csv_filename'] = os.path.basename(csv_path)
+        progress_store[progress_key]['done'] = True
+
     return csv_path, excel_path, dashboard_path, len(anomalies), len(critical_issues)
 
-def validate_file(filepath, progress_key=None):
+def validate_file(filepath, progress_key=None, result_key=None):
     # If PDF, run PDF validation, else fallback to dummy
     if filepath.lower().endswith('.pdf'):
         df = None
-        csv_path, excel_path, dashboard_path, anomaly_count, critical_count = validate_pdf(filepath, EXPORTS_FOLDER, progress_key)
-        # For download, return the CSV as DataFrame
-        import logging
-        logging.warning(f"[validate_file] CSV path: {csv_path} exists: {os.path.exists(csv_path)}")
+        csv_path, excel_path, dashboard_path, anomaly_count, critical_count = validate_pdf(filepath, EXPORTS_FOLDER, progress_key, result_key)
         df = pd.read_csv(csv_path)
-        if progress_key:
-            progress_store[progress_key] = 100
         return df, os.path.basename(csv_path)
     else:
         data = {'filename': [os.path.basename(filepath)], 'status': ['validated']}
         df = pd.DataFrame(data)
         csv_filename = os.path.splitext(os.path.basename(filepath))[0] + '.csv'
         csv_path = os.path.join(EXPORTS_FOLDER, csv_filename)
-        import logging
         df.to_csv(csv_path, index=False)
-        logging.warning(f"[validate_file] Dummy CSV path: {csv_path} exists: {os.path.exists(csv_path)}")
+        if progress_key and result_key:
+            progress_store[progress_key]['percent'] = 100
+            progress_store[progress_key]['csv_filename'] = csv_filename
+            progress_store[progress_key]['done'] = True
         return df, csv_filename
 
 def export_to_csv(df, csv_path):
@@ -190,32 +194,55 @@ def export_to_csv(df, csv_path):
 
 @app.route('/', methods=['GET'])
 def index():
-    # Simple upload form
     return render_template_string('''
     <h2>Upload file for validation</h2>
     <form method="post" action="/api/validate" enctype="multipart/form-data">
       <input type="file" name="file">
       <input type="submit" value="Upload and Validate">
     </form>
+    <div id="progress-bar" style="width: 100%; background: #eee; height: 20px; margin-top: 20px;">
+      <div id="progress" style="background: #4caf50; width: 0%; height: 100%;"></div>
+    </div>
     <div id="download-link"></div>
     <script>
     document.querySelector('form').onsubmit = async function(e) {
       e.preventDefault();
       const formData = new FormData(this);
-      const res = await fetch('/api/validate', { method: 'POST', body: formData })
+      let progressBar = document.getElementById('progress');
+      progressBar.style.width = '0%';
+      document.getElementById('download-link').innerHTML = '';
+      // Start upload and get progressKey
+      const res = await fetch('/api/validate', { method: 'POST', body: formData });
       const data = await res.json();
-      if (data.csvFilename) {
-          document.getElementById('download-link').innerHTML =
-              `<a href="/download/${data.csvFilename}" download>Download CSV</a>`;
-          window.location.href = `/download/${data.csvFilename}`;
+      if (!data.progressKey) {
+        document.getElementById('download-link').innerText = 'Validation failed.';
+        return;
+      }
+      // Poll for progress
+      let percent = 0;
+      let csvFilename = '';
+      while (percent < 100) {
+        const progRes = await fetch(`/api/progress/${data.progressKey}`);
+        const progData = await progRes.json();
+        percent = progData.percent;
+        progressBar.style.width = percent + '%';
+        if (progData.done && progData.csv_filename) {
+          csvFilename = progData.csv_filename;
+          break;
+        }
+        await new Promise(r => setTimeout(r, 1000));
+      }
+      if (csvFilename) {
+        document.getElementById('download-link').innerHTML =
+          `<a href="/download/${csvFilename}" download>Download CSV</a>`;
       } else {
-          document.getElementById('download-link').innerText = 'Validation failed.';
+        document.getElementById('download-link').innerText = 'Validation failed.';
       }
     }
     </script>
     ''')
 
-@app.route('/api/validate', methods=['GET', 'POST'])
+@app.route('/api/validate', methods=['POST'])
 def api_validate():
     if 'file' not in request.files:
         return jsonify({'error': 'No file part'}), 400
@@ -227,38 +254,41 @@ def api_validate():
         upload_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
         file.save(upload_path)
 
-        # Generate a unique progress key (could use session or uuid)
-        progress_key = filename + str(int(time.time()))
-        progress_store[progress_key] = 0
+        # Generate a unique progress key
+        progress_key = str(uuid.uuid4())
+        progress_store[progress_key] = {'percent': 0, 'done': False, 'csv_filename': None}
 
         def run_validation():
-            validate_file(upload_path, progress_key)
+            validate_file(upload_path, progress_key, progress_key)
 
         # Run validation in a background thread
         thread = threading.Thread(target=run_validation)
         thread.start()
 
         return jsonify({'progressKey': progress_key})
-# Progress endpoint
+    return jsonify({'error': 'Invalid file type'}), 400
+
 @app.route('/api/progress/<progress_key>', methods=['GET'])
 def get_progress(progress_key):
-    percent = progress_store.get(progress_key, 0)
-    return jsonify({'percent': percent})
-    return jsonify({'error': 'Invalid file type'}), 400
+    prog = progress_store.get(progress_key)
+    if not prog:
+        return jsonify({'percent': 0, 'done': False})
+    return jsonify({
+        'percent': prog.get('percent', 0),
+        'done': prog.get('done', False),
+        'csv_filename': prog.get('csv_filename')
+    })
 
 @app.route('/download/<csv_filename>', methods=['GET'])
 def download_csv(csv_filename):
-    import logging
     try:
-        full_path = os.path.join(app.config['EXPORTS_FOLDER'], csv_filename)
-        logging.warning(f"[download_csv] Download requested: {full_path} exists: {os.path.exists(full_path)}")
         return send_from_directory(app.config['EXPORTS_FOLDER'], csv_filename, as_attachment=True)
     except FileNotFoundError:
-        logging.error(f"[download_csv] File not found: {csv_filename}")
         return "File not found", 404
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=3000)
+    port = int(os.environ.get("PORT", 3000))
+    app.run(host='0.0.0.0', port=port)
 
 # Install Tesseract OCR
 # RUN apt-get update && apt-get install -y tesseract-ocr
