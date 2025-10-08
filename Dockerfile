@@ -15,5 +15,5 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Expose the port Render will use
 EXPOSE 10000
 
-# Start the app with Gunicorn and a longer timeout for OCR
-CMD ["gunicorn", "app.app:app", "--bind", "0.0.0.0:10000", "--timeout", "120"]
+# Start the app with Gunicorn and a longer timeout for OCR, using the PORT env variable for compatibility
+CMD ["sh", "-c", "gunicorn app.app:app --bind 0.0.0.0:${PORT:-10000} --timeout 120"]
