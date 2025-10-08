@@ -196,48 +196,93 @@ def export_to_csv(df, csv_path):
 def index():
     return render_template_string('''
     <h2>Upload file for validation</h2>
-    <form method="post" action="/api/validate" enctype="multipart/form-data">
-      <input type="file" name="file">
+    <p>1. Select a file.<br>
+    2. Click <b>Upload and Validate</b>.<br>
+    3. Wait for both progress bars to reach 100%.<br>
+    4. When validation is complete, click the <b>Download CSV</b> link.</p>
+    <form id="upload-form" method="post" action="/api/validate" enctype="multipart/form-data">
+      <input type="file" name="file" id="file-input">
       <input type="submit" value="Upload and Validate">
     </form>
-    <div id="progress-bar" style="width: 100%; background: #eee; height: 20px; margin-top: 20px;">
-      <div id="progress" style="background: #4caf50; width: 0%; height: 100%;"></div>
+    <div style="margin-top:20px;">
+      <div>Upload Progress: <span id="upload-percent">0%</span></div>
+      <div id="upload-progress-bar" style="width: 100%; background: #eee; height: 20px;">
+        <div id="upload-progress" style="background: #2196f3; width: 0%; height: 100%;"></div>
+      </div>
     </div>
-    <div id="download-link"></div>
+    <div style="margin-top:20px;">
+      <div>Validation Progress: <span id="progress-percent">0%</span></div>
+      <div id="progress-bar" style="width: 100%; background: #eee; height: 20px;">
+        <div id="progress" style="background: #4caf50; width: 0%; height: 100%;"></div>
+      </div>
+    </div>
+    <div id="download-link" style="margin-top:20px;"></div>
     <script>
-    document.querySelector('form').onsubmit = async function(e) {
+    document.getElementById('upload-form').onsubmit = async function(e) {
       e.preventDefault();
       const formData = new FormData(this);
+      let uploadProgressBar = document.getElementById('upload-progress');
+      let uploadPercentText = document.getElementById('upload-percent');
       let progressBar = document.getElementById('progress');
+      let progressPercentText = document.getElementById('progress-percent');
+      uploadProgressBar.style.width = '0%';
+      uploadPercentText.innerText = '0%';
       progressBar.style.width = '0%';
+      progressPercentText.innerText = '0%';
       document.getElementById('download-link').innerHTML = '';
-      // Start upload and get progressKey
-      const res = await fetch('/api/validate', { method: 'POST', body: formData });
-      const data = await res.json();
-      if (!data.progressKey) {
-        document.getElementById('download-link').innerText = 'Validation failed.';
-        return;
-      }
-      // Poll for progress
-      let percent = 0;
-      let csvFilename = '';
-      while (percent < 100) {
-        const progRes = await fetch(`/api/progress/${data.progressKey}`);
-        const progData = await progRes.json();
-        percent = progData.percent;
-        progressBar.style.width = percent + '%';
-        if (progData.done && progData.csv_filename) {
-          csvFilename = progData.csv_filename;
-          break;
+
+      // AJAX upload with progress
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', '/api/validate', true);
+
+      xhr.upload.onprogress = function(e) {
+        if (e.lengthComputable) {
+          let percent = Math.round((e.loaded / e.total) * 100);
+          uploadProgressBar.style.width = percent + '%';
+          uploadPercentText.innerText = percent + '%';
         }
-        await new Promise(r => setTimeout(r, 1000));
-      }
-      if (csvFilename) {
-        document.getElementById('download-link').innerHTML =
-          `<a href="/download/${csvFilename}" download>Download CSV</a>`;
-      } else {
-        document.getElementById('download-link').innerText = 'Validation failed.';
-      }
+      };
+
+      xhr.onreadystatechange = async function() {
+        if (xhr.readyState === XMLHttpRequest.DONE) {
+          if (xhr.status === 200) {
+            uploadProgressBar.style.width = '100%';
+            uploadPercentText.innerText = '100%';
+            const data = JSON.parse(xhr.responseText);
+            if (!data.progressKey) {
+              document.getElementById('download-link').innerText = 'Validation failed.';
+              return;
+            }
+            // Poll for validation progress
+            let percent = 0;
+            let csvFilename = '';
+            while (percent < 100) {
+              const progRes = await fetch(`/api/progress/${data.progressKey}`);
+              const progData = await progRes.json();
+              percent = progData.percent;
+              progressBar.style.width = percent + '%';
+              progressPercentText.innerText = percent + '%';
+              if (progData.done && progData.csv_filename) {
+                csvFilename = progData.csv_filename;
+                break;
+              }
+              await new Promise(r => setTimeout(r, 1000));
+            }
+            progressBar.style.width = '100%';
+            progressPercentText.innerText = '100%';
+            if (csvFilename) {
+              document.getElementById('download-link').innerHTML =
+                `<b>Validation complete! Click the link below to download your results:</b><br>
+                <a href="/download/${csvFilename}" download>Download CSV</a>`;
+            } else {
+              document.getElementById('download-link').innerText = 'Validation failed.';
+            }
+          } else {
+            document.getElementById('download-link').innerText = 'Upload failed.';
+          }
+        }
+      };
+      xhr.send(formData);
     }
     </script>
     ''')
