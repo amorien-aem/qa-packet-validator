@@ -304,7 +304,12 @@ def api_validate():
         progress_store[progress_key] = {'percent': 0, 'done': False, 'csv_filename': None}
 
         def run_validation():
-            validate_file(upload_path, progress_key, progress_key)
+            try:
+                validate_file(upload_path, progress_key, progress_key)
+            except Exception as e:
+                progress_store[progress_key]['done'] = True
+                progress_store[progress_key]['csv_filename'] = None
+                print(f"Validation error: {e}")
 
         # Run validation in a background thread
         thread = threading.Thread(target=run_validation)
@@ -337,3 +342,4 @@ if __name__ == '__main__':
 
 # Install Tesseract OCR
 # RUN apt-get update && apt-get install -y tesseract-ocr
+buildCommand: ./render-build.sh && pip install -r requirements.txtbuildCommand: ./render-build.sh && pip install -r requirements.txt
