@@ -194,23 +194,23 @@ def index():
     return render_template_string('''
     <h2>Upload file for validation</h2>
     <form method="post" action="/api/validate" enctype="multipart/form-data">
-        <input type="file" name="file">
-        <input type="submit" value="Upload and Validate">
+      <input type="file" name="file">
+      <input type="submit" value="Upload and Validate">
     </form>
     <div id="download-link"></div>
     <script>
     document.querySelector('form').onsubmit = async function(e) {
-        e.preventDefault();
-        const formData = new FormData(this);
-        const res = await fetch('/api/validate', { method: 'POST', body: formData })
-        const data = await res.json();
-        if (data.csvFilename) {
-            document.getElementById('download-link').innerHTML =
-                `<a href="/download/${data.csvFilename}" download>Download CSV</a>`;
-            window.location.href = `/download/${data.csvFilename}`;
-        } else {
-            document.getElementById('download-link').innerText = 'Validation failed.';
-        }
+      e.preventDefault();
+      const formData = new FormData(this);
+      const res = await fetch('/api/validate', { method: 'POST', body: formData })
+      const data = await res.json();
+      if (data.csvFilename) {
+          document.getElementById('download-link').innerHTML =
+              `<a href="/download/${data.csvFilename}" download>Download CSV</a>`;
+          window.location.href = `/download/${data.csvFilename}`;
+      } else {
+          document.getElementById('download-link').innerText = 'Validation failed.';
+      }
     }
     </script>
     ''')
