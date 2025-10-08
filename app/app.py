@@ -339,7 +339,3 @@ def download_csv(csv_filename):
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 3000))
     app.run(host='0.0.0.0', port=port)
-
-# Install Tesseract OCR
-# RUN apt-get update && apt-get install -y tesseract-ocr
-buildCommand: ./render-build.sh && pip install -r requirements.txtbuildCommand: ./render-build.sh && pip install -r requirements.txt
