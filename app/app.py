@@ -215,7 +215,7 @@ def index():
     </script>
     ''')
 
-@app.route('/api/validate', methods=['GET', 'POST'])
+@app.route('/api/validate', methods=['POST'])
 def api_validate():
     if 'file' not in request.files:
         return jsonify({'error': 'No file part'}), 400
@@ -227,24 +227,15 @@ def api_validate():
         upload_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
         file.save(upload_path)
 
-        # Generate a unique progress key (could use session or uuid)
-        progress_key = filename + str(int(time.time()))
-        progress_store[progress_key] = 0
+        df, csv_filename = validate_file(upload_path)
+        return jsonify({'csvFilename': csv_filename})
+    return jsonify({'error': 'Invalid file type'}), 400
 
-        def run_validation():
-            validate_file(upload_path, progress_key)
-
-        # Run validation in a background thread
-        thread = threading.Thread(target=run_validation)
-        thread.start()
-
-        return jsonify({'progressKey': progress_key})
 # Progress endpoint
 @app.route('/api/progress/<progress_key>', methods=['GET'])
 def get_progress(progress_key):
     percent = progress_store.get(progress_key, 0)
     return jsonify({'percent': percent})
-    return jsonify({'error': 'Invalid file type'}), 400
 
 @app.route('/download/<csv_filename>', methods=['GET'])
 def download_csv(csv_filename):
