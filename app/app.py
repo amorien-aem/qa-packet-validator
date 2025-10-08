@@ -40,9 +40,14 @@ def extract_text_with_ocr(page):
     if text.strip():
         return text
     # Fallback to OCR if no text found
-    pix = page.get_pixmap(dpi=300)
+    pix = page.get_pixmap(dpi=150)  # Lower DPI to reduce memory usage
     img = Image.open(io.BytesIO(pix.tobytes("png")))
-    text = pytesseract.image_to_string(img)
+    img = img.convert("L")  # Convert to grayscale
+    img = img.resize((img.width // 2, img.height // 2))  # Downscale image
+    try:
+        text = pytesseract.image_to_string(img)
+    except Exception as e:
+        text = ""
     return text
 
 def validate_pdf(pdf_path, export_dir, progress_key=None):
@@ -168,7 +173,6 @@ def validate_file(filepath, progress_key=None):
     if filepath.lower().endswith('.pdf'):
         df = None
         csv_path, excel_path, dashboard_path, anomaly_count, critical_count = validate_pdf(filepath, EXPORTS_FOLDER, progress_key)
-        # For download, return the CSV as DataFrame
         import logging
         logging.warning(f"[validate_file] CSV path: {csv_path} exists: {os.path.exists(csv_path)}")
         df = pd.read_csv(csv_path)
@@ -249,6 +253,11 @@ def download_csv(csv_filename):
         return "File not found", 404
 
 if __name__ == '__main__':
+    # Increase worker timeout for Gunicorn if running via CLI
+    import os
+    timeout = int(os.environ.get("WORKER_TIMEOUT", "300"))
+    # If running with Gunicorn, set timeout via command line:
+    # gunicorn app.app:app --timeout 300 --bind 0.0.0.0:3000
     app.run(host='0.0.0.0', port=3000)
 
 # Install Tesseract OCR
