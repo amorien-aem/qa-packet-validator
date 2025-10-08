@@ -4,8 +4,8 @@
 **Author**: Adam Morien  
 **Maintainer**: Adam Morien  
 **Version**: 1.0  
-**License**: MIT  
-**Repository**: https://github.com/adam-morien/qa-packet-validator
+**License**: Eclipse Public License - v 2.0  
+**Repository**: https://github.com/amorien-aem/qa-packet-validator
 
 ## Description
 
