@@ -22,8 +22,10 @@ from PIL import Image
 import io
 import uuid
 
-UPLOAD_FOLDER = os.path.join(os.path.dirname(__file__), 'uploads')
-EXPORTS_FOLDER = os.path.join(os.path.dirname(__file__), 'exports')
+# Use absolute paths for directories to avoid issues in cloud environments
+BASE_DIR = os.path.abspath(os.path.dirname(__file__))
+UPLOAD_FOLDER = os.path.join(BASE_DIR, 'uploads')
+EXPORTS_FOLDER = os.path.join(BASE_DIR, 'exports')
 ALLOWED_EXTENSIONS = {'pdf', 'csv', 'xlsx'}
 
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
@@ -116,6 +118,7 @@ def validate_pdf(pdf_path, export_dir, progress_key=None, result_key=None):
         # Update progress
         if progress_key:
             progress_store[progress_key]['percent'] = int(((page_num + 1) / total_pages) * 100)
+        print(f"Processed page {page_num+1}/{total_pages}")
 
     for field in ["Part Number", "Lot Number", "Date"]:
         if not check_consistency(field):
@@ -168,6 +171,7 @@ def validate_pdf(pdf_path, export_dir, progress_key=None, result_key=None):
         progress_store[progress_key]['csv_filename'] = os.path.basename(csv_path)
         progress_store[progress_key]['done'] = True
 
+    print(f"Validation complete. CSV saved at {csv_path}")
     return csv_path, excel_path, dashboard_path, len(anomalies), len(critical_issues)
 
 def validate_file(filepath, progress_key=None, result_key=None):
@@ -176,6 +180,7 @@ def validate_file(filepath, progress_key=None, result_key=None):
         df = None
         csv_path, excel_path, dashboard_path, anomaly_count, critical_count = validate_pdf(filepath, EXPORTS_FOLDER, progress_key, result_key)
         df = pd.read_csv(csv_path)
+        print(f"validate_file: CSV generated at {csv_path}")
         return df, os.path.basename(csv_path)
     else:
         data = {'filename': [os.path.basename(filepath)], 'status': ['validated']}
@@ -187,6 +192,7 @@ def validate_file(filepath, progress_key=None, result_key=None):
             progress_store[progress_key]['percent'] = 100
             progress_store[progress_key]['csv_filename'] = csv_filename
             progress_store[progress_key]['done'] = True
+        print(f"validate_file: Non-PDF CSV generated at {csv_path}")
         return df, csv_filename
 
 def export_to_csv(df, csv_path):
@@ -305,11 +311,11 @@ def api_validate():
 
         def run_validation():
             try:
-                # Always attempt validation and export, even if errors occur
+                print(f"Starting validation for {upload_path}")
                 df, csv_filename = validate_file(upload_path, progress_key, progress_key)
                 progress_store[progress_key]['csv_filename'] = csv_filename
+                print(f"Validation finished for {upload_path}, CSV: {csv_filename}")
             except Exception as e:
-                # On error, still try to export a minimal CSV for the user
                 error_csv = os.path.splitext(filename)[0] + "_validation_summary.csv"
                 error_csv_path = os.path.join(EXPORTS_FOLDER, error_csv)
                 with open(error_csv_path, "w", newline='') as f:
@@ -321,6 +327,7 @@ def api_validate():
             finally:
                 progress_store[progress_key]['percent'] = 100
                 progress_store[progress_key]['done'] = True
+                print(f"Validation thread complete for {upload_path}")
 
         # Run validation in a background thread
         thread = threading.Thread(target=run_validation)
@@ -332,6 +339,7 @@ def api_validate():
 @app.route('/api/progress/<progress_key>', methods=['GET'])
 def get_progress(progress_key):
     prog = progress_store.get(progress_key)
+    print(f"Progress check for key {progress_key}: {prog}")
     if not prog:
         return jsonify({'percent': 0, 'done': False})
     return jsonify({
@@ -343,8 +351,10 @@ def get_progress(progress_key):
 @app.route('/download/<csv_filename>', methods=['GET'])
 def download_csv(csv_filename):
     try:
+        print(f"Download requested for {csv_filename}")
         return send_from_directory(app.config['EXPORTS_FOLDER'], csv_filename, as_attachment=True)
     except FileNotFoundError:
+        print(f"File not found for download: {csv_filename}")
         return "File not found", 404
 
 if __name__ == '__main__':
