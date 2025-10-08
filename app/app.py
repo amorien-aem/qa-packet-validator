@@ -202,7 +202,7 @@ def index():
     document.querySelector('form').onsubmit = async function(e) {
         e.preventDefault();
         const formData = new FormData(this);
-        const res = await fetch('/api/validate', {method: 'POST', body: formData});
+        const res = await fetch('/api/validate', { method: 'POST', body: formData })
         const data = await res.json();
         if (data.csvFilename) {
             document.getElementById('download-link').innerHTML =
@@ -215,7 +215,7 @@ def index():
     </script>
     ''')
 
-@app.route('/api/validate', methods=['POST'])
+@app.route('/api/validate', methods=['GET', 'POST'])
 def api_validate():
     if 'file' not in request.files:
         return jsonify({'error': 'No file part'}), 400
