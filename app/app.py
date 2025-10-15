@@ -309,7 +309,7 @@ def api_validate():
         progress_key = str(uuid.uuid4())
         progress_store[progress_key] = {'percent': 0, 'done': False, 'csv_filename': None}
 
-        def run_validation():
+        def run_validation(progress_key, upload_path, filename):
             try:
                 print(f"Starting validation for {upload_path}")
                 df, csv_filename = validate_file(upload_path, progress_key, progress_key)
@@ -318,19 +318,23 @@ def api_validate():
             except Exception as e:
                 error_csv = os.path.splitext(filename)[0] + "_validation_summary.csv"
                 error_csv_path = os.path.join(EXPORTS_FOLDER, error_csv)
-                with open(error_csv_path, "w", newline='') as f:
-                    writer = csv.writer(f)
-                    writer.writerow(["Error"])
-                    writer.writerow([str(e)])
-                progress_store[progress_key]['csv_filename'] = error_csv
+                try:
+                    with open(error_csv_path, "w", newline='') as f:
+                        writer = csv.writer(f)
+                        writer.writerow(["Error"])
+                        writer.writerow([str(e)])
+                    progress_store[progress_key]['csv_filename'] = error_csv
+                except Exception as file_error:
+                    print(f"Error writing error CSV: {file_error}")
+                    progress_store[progress_key]['csv_filename'] = None
                 print(f"Validation error: {e}")
             finally:
                 progress_store[progress_key]['percent'] = 100
                 progress_store[progress_key]['done'] = True
                 print(f"Validation thread complete for {upload_path}")
 
-        # Run validation in a background thread
-        thread = threading.Thread(target=run_validation)
+        # Run validation in a background thread, always passing the correct key
+        thread = threading.Thread(target=run_validation, args=(progress_key, upload_path, filename))
         thread.start()
 
         return jsonify({'progressKey': progress_key})
@@ -341,7 +345,7 @@ def get_progress(progress_key):
     prog = progress_store.get(progress_key)
     print(f"Progress check for key {progress_key}: {prog}")
     if not prog:
-        return jsonify({'percent': 0, 'done': False})
+        return jsonify({'percent': 0, 'done': False, 'csv_filename': None, 'error': 'Progress key not found'}), 404
     return jsonify({
         'percent': prog.get('percent', 0),
         'done': prog.get('done', False),
