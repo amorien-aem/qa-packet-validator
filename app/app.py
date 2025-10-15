@@ -57,8 +57,8 @@ def validate_pdf(pdf_path, export_dir, progress_key=None, result_key=None):
 
     REQUIRED_FIELDS = [
         "Customer Name", "Customer P.O. Number", "Customer Part Number",
-        "Customer Part Number Revision", "OEM Part Number", "OEM Lot Number",
-        "OEM Date Code", "OEM Cage Code", "AEM Part Number", "AEM Lot Number",
+        "Customer Part Number Revision", "AEM Part Number", "AEM Lot Number",
+        "AEM Date Code", "AEM Cage Code", "AEM Part Number", "AEM Lot Number",
         "AEM Date Code", "AEM Cage Code", "Customer Quality Clauses",
         "FAI Form 3", "Solderability Test Report", "DPA", "Visual Inspection Record",
         "Shipment Quantity", "Reel Labels", "Certificate of Conformance", "Route Sheet",
