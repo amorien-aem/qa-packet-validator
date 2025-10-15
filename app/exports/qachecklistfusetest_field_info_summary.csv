@@ -1,0 +1,24 @@
+Field,Status,Output
+Customer Name,Found,P.O. # Item #
+Customer P.O. Number,Found,is correct in all applicable paperwork. Checked
+Customer Part Number,Found,is correct in ail applicable paperwork. Checked
+Customer Part Number Revision,Not found,Not found
+AEM Part Number,Found,is correct in all applicable paperwork. Checked
+AEM Lot Number,Found,is correct in all applicable paperwork. Checked
+AEM Date Code,Found,is correct in all applicable paperwork Checked
+AEM Cage Code,Found,is provided in C of C. Checked
+Customer Quality Clauses,Found,are met. Checked
+FAI Form 3,Not found,Not found
+Solderability Test Report,Not found,Not found
+DPA,Found,is completed. Checked
+Visual Inspection Record,Not found,Not found
+Shipment Quantity,Found,is correct. Checked
+Reel Labels,Not found,Not found
+Certificate of Conformance,Not found,Not found
+Route Sheet,Not found,Not found
+Part Number,Found,is correct in ail applicable paperwork. Checked
+Lot Number,Found,is correct in all applicable paperwork. Checked
+Date,Found,code is correct in all applicable paperwork Checked
+Resistance,Not found,Not found
+Dimension,Not found,Not found
+Test Result,Not found,Not found

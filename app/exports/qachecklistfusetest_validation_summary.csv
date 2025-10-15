@@ -1,11 +1,24 @@
-Page,Field,Issue
-1,Customer Part Number Revision,Missing
-1,FAI Form 3,Missing
-1,Solderability Test Report,Missing
-1,Visual Inspection Record,Missing
-1,Reel Labels,Missing
-1,Certificate of Conformance,Missing
-1,Route Sheet,Missing
-1,Resistance,Missing
-1,Dimension,Missing
-1,Test Result,Missing
+Page,Field,Result,Output
+1,Customer Name,Found,P.O. # Item #
+1,Customer P.O. Number,Found,is correct in all applicable paperwork. Checked
+1,Customer Part Number,Found,is correct in ail applicable paperwork. Checked
+1,Customer Part Number Revision,Missing,
+1,AEM Part Number,Found,is correct in all applicable paperwork. Checked
+1,AEM Lot Number,Found,is correct in all applicable paperwork. Checked
+1,AEM Date Code,Found,is correct in all applicable paperwork Checked
+1,AEM Cage Code,Found,is provided in C of C. Checked
+1,Customer Quality Clauses,Found,are met. Checked
+1,FAI Form 3,Missing,
+1,Solderability Test Report,Missing,
+1,DPA,Found,is completed. Checked
+1,Visual Inspection Record,Missing,
+1,Shipment Quantity,Found,is correct. Checked
+1,Reel Labels,Missing,
+1,Certificate of Conformance,Missing,
+1,Route Sheet,Missing,
+1,Part Number,Found,is correct in ail applicable paperwork. Checked
+1,Lot Number,Found,is correct in all applicable paperwork. Checked
+1,Date,Found,code is correct in all applicable paperwork Checked
+1,Resistance,Missing,
+1,Dimension,Missing,
+1,Test Result,Missing,

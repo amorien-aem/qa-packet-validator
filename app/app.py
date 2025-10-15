@@ -58,7 +58,6 @@ def validate_pdf(pdf_path, export_dir, progress_key=None, result_key=None):
     REQUIRED_FIELDS = [
         "Customer Name", "Customer P.O. Number", "Customer Part Number",
         "Customer Part Number Revision", "AEM Part Number", "AEM Lot Number",
-        "AEM Date Code", "AEM Cage Code", "AEM Part Number", "AEM Lot Number",
         "AEM Date Code", "AEM Cage Code", "Customer Quality Clauses",
         "FAI Form 3", "Solderability Test Report", "DPA", "Visual Inspection Record",
         "Shipment Quantity", "Reel Labels", "Certificate of Conformance", "Route Sheet",
@@ -74,6 +73,8 @@ def validate_pdf(pdf_path, export_dir, progress_key=None, result_key=None):
     critical_issues = []
     field_presence = defaultdict(int)
     all_fields = []
+    field_page_map = defaultdict(list)  # field -> list of page numbers
+    field_value_map = defaultdict(list)  # field -> list of (page, value)
 
     def extract_fields(text):
         fields = {}
@@ -109,6 +110,8 @@ def validate_pdf(pdf_path, export_dir, progress_key=None, result_key=None):
                 anomalies.append([page_num + 1, field, "Missing"])
             else:
                 field_presence[field] += 1
+                field_page_map[field].append(page_num + 1)
+                field_value_map[field].append((page_num + 1, fields[field]))
 
         for field in NUMERICAL_RANGES:
             if field in fields and not validate_numerical(field, fields[field]):
@@ -125,10 +128,32 @@ def validate_pdf(pdf_path, export_dir, progress_key=None, result_key=None):
             anomalies.append(["All Pages", field, "Inconsistent values"])
             critical_issues.append(["All Pages", field, "Inconsistent values"])
 
+    # Write all required fields for every page: Page, Field, Result ('Found' or 'Missing'), Output (value or blank)
     with open(csv_path, "w", newline='') as f:
         writer = csv.writer(f)
-        writer.writerow(["Page", "Field", "Issue"])
-        writer.writerows(anomalies)
+        writer.writerow(["Page", "Field", "Result", "Output"])
+        for page_num in range(1, total_pages + 1):
+            # Extract fields for this page
+            fields = all_fields[page_num - 1]
+            for field in REQUIRED_FIELDS:
+                if field in fields:
+                    writer.writerow([page_num, field, "Found", fields[field]])
+                else:
+                    writer.writerow([page_num, field, "Missing", ""])
+
+    # Write summary: all required fields, 'Found' if present, and all extracted values (concatenated)
+    field_info_csv = os.path.join(export_dir, f"{base_name}_field_info_summary.csv")
+    with open(field_info_csv, "w", newline='') as f:
+        writer = csv.writer(f)
+        writer.writerow(["Field", "Status", "Output"])
+        for field in REQUIRED_FIELDS:
+            values = field_value_map[field]
+            if values:
+                # Concatenate all extracted values for this field, preserving all characters
+                value_str = '; '.join(v for _, v in values)
+                writer.writerow([field, "Found", value_str])
+            else:
+                writer.writerow([field, "Not found", "Not found"])
 
     wb = Workbook()
     ws = wb.active

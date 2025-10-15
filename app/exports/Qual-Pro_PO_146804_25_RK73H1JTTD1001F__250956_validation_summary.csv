@@ -1,0 +1,992 @@
+Page,Field,Issue
+1,Customer Name,Missing
+1,Customer P.O. Number,Missing
+1,Customer Part Number,Missing
+1,Customer Part Number Revision,Missing
+1,AEM Part Number,Missing
+1,AEM Lot Number,Missing
+1,AEM Date Code,Missing
+1,AEM Cage Code,Missing
+1,AEM Part Number,Missing
+1,AEM Lot Number,Missing
+1,AEM Date Code,Missing
+1,AEM Cage Code,Missing
+1,Customer Quality Clauses,Missing
+1,FAI Form 3,Missing
+1,Solderability Test Report,Missing
+1,DPA,Missing
+1,Visual Inspection Record,Missing
+1,Shipment Quantity,Missing
+1,Reel Labels,Missing
+1,Certificate of Conformance,Missing
+1,Route Sheet,Missing
+1,Lot Number,Missing
+1,Resistance,Missing
+1,Dimension,Missing
+1,Test Result,Missing
+2,Customer Name,Missing
+2,Customer P.O. Number,Missing
+2,Customer Part Number,Missing
+2,Customer Part Number Revision,Missing
+2,AEM Part Number,Missing
+2,AEM Lot Number,Missing
+2,AEM Date Code,Missing
+2,AEM Cage Code,Missing
+2,AEM Part Number,Missing
+2,AEM Lot Number,Missing
+2,AEM Date Code,Missing
+2,AEM Cage Code,Missing
+2,Customer Quality Clauses,Missing
+2,FAI Form 3,Missing
+2,Solderability Test Report,Missing
+2,DPA,Missing
+2,Visual Inspection Record,Missing
+2,Shipment Quantity,Missing
+2,Reel Labels,Missing
+2,Certificate of Conformance,Missing
+2,Route Sheet,Missing
+2,Lot Number,Missing
+2,Resistance,Missing
+2,Dimension,Missing
+2,Test Result,Missing
+3,Customer Name,Missing
+3,Customer P.O. Number,Missing
+3,Customer Part Number,Missing
+3,Customer Part Number Revision,Missing
+3,AEM Part Number,Missing
+3,AEM Lot Number,Missing
+3,AEM Date Code,Missing
+3,AEM Cage Code,Missing
+3,AEM Part Number,Missing
+3,AEM Lot Number,Missing
+3,AEM Date Code,Missing
+3,AEM Cage Code,Missing
+3,Customer Quality Clauses,Missing
+3,FAI Form 3,Missing
+3,Solderability Test Report,Missing
+3,DPA,Missing
+3,Visual Inspection Record,Missing
+3,Shipment Quantity,Missing
+3,Reel Labels,Missing
+3,Certificate of Conformance,Missing
+3,Route Sheet,Missing
+3,Part Number,Missing
+3,Lot Number,Missing
+3,Date,Missing
+3,Resistance,Missing
+3,Dimension,Missing
+3,Test Result,Missing
+4,Customer Name,Missing
+4,Customer P.O. Number,Missing
+4,Customer Part Number,Missing
+4,Customer Part Number Revision,Missing
+4,AEM Part Number,Missing
+4,AEM Lot Number,Missing
+4,AEM Date Code,Missing
+4,AEM Cage Code,Missing
+4,AEM Part Number,Missing
+4,AEM Lot Number,Missing
+4,AEM Date Code,Missing
+4,AEM Cage Code,Missing
+4,Customer Quality Clauses,Missing
+4,FAI Form 3,Missing
+4,Solderability Test Report,Missing
+4,DPA,Missing
+4,Visual Inspection Record,Missing
+4,Shipment Quantity,Missing
+4,Reel Labels,Missing
+4,Certificate of Conformance,Missing
+4,Route Sheet,Missing
+4,Part Number,Missing
+4,Lot Number,Missing
+4,Date,Missing
+4,Resistance,Missing
+4,Dimension,Missing
+4,Test Result,Missing
+5,Customer Name,Missing
+5,Customer P.O. Number,Missing
+5,Customer Part Number,Missing
+5,Customer Part Number Revision,Missing
+5,AEM Part Number,Missing
+5,AEM Lot Number,Missing
+5,AEM Date Code,Missing
+5,AEM Cage Code,Missing
+5,AEM Part Number,Missing
+5,AEM Lot Number,Missing
+5,AEM Date Code,Missing
+5,AEM Cage Code,Missing
+5,Customer Quality Clauses,Missing
+5,FAI Form 3,Missing
+5,Solderability Test Report,Missing
+5,DPA,Missing
+5,Visual Inspection Record,Missing
+5,Shipment Quantity,Missing
+5,Reel Labels,Missing
+5,Certificate of Conformance,Missing
+5,Route Sheet,Missing
+5,Part Number,Missing
+5,Lot Number,Missing
+5,Date,Missing
+5,Resistance,Missing
+5,Dimension,Missing
+5,Test Result,Missing
+6,Customer Name,Missing
+6,Customer P.O. Number,Missing
+6,Customer Part Number,Missing
+6,Customer Part Number Revision,Missing
+6,AEM Part Number,Missing
+6,AEM Lot Number,Missing
+6,AEM Date Code,Missing
+6,AEM Cage Code,Missing
+6,AEM Part Number,Missing
+6,AEM Lot Number,Missing
+6,AEM Date Code,Missing
+6,AEM Cage Code,Missing
+6,Customer Quality Clauses,Missing
+6,FAI Form 3,Missing
+6,Solderability Test Report,Missing
+6,DPA,Missing
+6,Visual Inspection Record,Missing
+6,Shipment Quantity,Missing
+6,Reel Labels,Missing
+6,Certificate of Conformance,Missing
+6,Route Sheet,Missing
+6,Part Number,Missing
+6,Lot Number,Missing
+6,Date,Missing
+6,Resistance,Missing
+6,Dimension,Missing
+6,Test Result,Missing
+7,Customer Name,Missing
+7,Customer P.O. Number,Missing
+7,Customer Part Number,Missing
+7,Customer Part Number Revision,Missing
+7,AEM Part Number,Missing
+7,AEM Lot Number,Missing
+7,AEM Date Code,Missing
+7,AEM Cage Code,Missing
+7,AEM Part Number,Missing
+7,AEM Lot Number,Missing
+7,AEM Date Code,Missing
+7,AEM Cage Code,Missing
+7,Customer Quality Clauses,Missing
+7,FAI Form 3,Missing
+7,Solderability Test Report,Missing
+7,DPA,Missing
+7,Visual Inspection Record,Missing
+7,Shipment Quantity,Missing
+7,Reel Labels,Missing
+7,Certificate of Conformance,Missing
+7,Route Sheet,Missing
+7,Part Number,Missing
+7,Lot Number,Missing
+7,Date,Missing
+7,Test Result,Missing
+7,Resistance,Out of range: and weather resistance
+7,Dimension,Out of range: s inches (mm)
+8,Customer Name,Missing
+8,Customer P.O. Number,Missing
+8,Customer Part Number,Missing
+8,Customer Part Number Revision,Missing
+8,AEM Part Number,Missing
+8,AEM Lot Number,Missing
+8,AEM Date Code,Missing
+8,AEM Cage Code,Missing
+8,AEM Part Number,Missing
+8,AEM Lot Number,Missing
+8,AEM Date Code,Missing
+8,AEM Cage Code,Missing
+8,Customer Quality Clauses,Missing
+8,FAI Form 3,Missing
+8,Solderability Test Report,Missing
+8,DPA,Missing
+8,Visual Inspection Record,Missing
+8,Shipment Quantity,Missing
+8,Reel Labels,Missing
+8,Certificate of Conformance,Missing
+8,Route Sheet,Missing
+8,Lot Number,Missing
+8,Resistance,Missing
+8,Dimension,Missing
+8,Test Result,Missing
+9,Customer Name,Missing
+9,Customer P.O. Number,Missing
+9,Customer Part Number,Missing
+9,Customer Part Number Revision,Missing
+9,AEM Part Number,Missing
+9,AEM Lot Number,Missing
+9,AEM Date Code,Missing
+9,AEM Cage Code,Missing
+9,AEM Part Number,Missing
+9,AEM Lot Number,Missing
+9,AEM Date Code,Missing
+9,AEM Cage Code,Missing
+9,Customer Quality Clauses,Missing
+9,FAI Form 3,Missing
+9,Solderability Test Report,Missing
+9,DPA,Missing
+9,Shipment Quantity,Missing
+9,Reel Labels,Missing
+9,Certificate of Conformance,Missing
+9,Route Sheet,Missing
+9,Lot Number,Missing
+9,Resistance,Missing
+9,Dimension,Missing
+10,Customer Name,Missing
+10,Customer P.O. Number,Missing
+10,Customer Part Number,Missing
+10,Customer Part Number Revision,Missing
+10,AEM Part Number,Missing
+10,AEM Lot Number,Missing
+10,AEM Date Code,Missing
+10,AEM Cage Code,Missing
+10,AEM Part Number,Missing
+10,AEM Lot Number,Missing
+10,AEM Date Code,Missing
+10,AEM Cage Code,Missing
+10,Customer Quality Clauses,Missing
+10,FAI Form 3,Missing
+10,Solderability Test Report,Missing
+10,DPA,Missing
+10,Visual Inspection Record,Missing
+10,Shipment Quantity,Missing
+10,Reel Labels,Missing
+10,Certificate of Conformance,Missing
+10,Route Sheet,Missing
+10,Dimension,Missing
+10,Resistance,Out of range: TEST RECORD (TWM)
+11,Customer Name,Missing
+11,Customer P.O. Number,Missing
+11,Customer Part Number,Missing
+11,Customer Part Number Revision,Missing
+11,AEM Part Number,Missing
+11,AEM Lot Number,Missing
+11,AEM Date Code,Missing
+11,AEM Cage Code,Missing
+11,AEM Part Number,Missing
+11,AEM Lot Number,Missing
+11,AEM Date Code,Missing
+11,AEM Cage Code,Missing
+11,Customer Quality Clauses,Missing
+11,FAI Form 3,Missing
+11,Solderability Test Report,Missing
+11,DPA,Missing
+11,Visual Inspection Record,Missing
+11,Shipment Quantity,Missing
+11,Reel Labels,Missing
+11,Certificate of Conformance,Missing
+11,Route Sheet,Missing
+11,Part Number,Missing
+11,Resistance,Missing
+11,Dimension,Missing
+12,Customer Name,Missing
+12,Customer P.O. Number,Missing
+12,Customer Part Number,Missing
+12,Customer Part Number Revision,Missing
+12,AEM Part Number,Missing
+12,AEM Lot Number,Missing
+12,AEM Date Code,Missing
+12,AEM Cage Code,Missing
+12,AEM Part Number,Missing
+12,AEM Lot Number,Missing
+12,AEM Date Code,Missing
+12,AEM Cage Code,Missing
+12,Customer Quality Clauses,Missing
+12,FAI Form 3,Missing
+12,Solderability Test Report,Missing
+12,DPA,Missing
+12,Visual Inspection Record,Missing
+12,Shipment Quantity,Missing
+12,Reel Labels,Missing
+12,Certificate of Conformance,Missing
+12,Route Sheet,Missing
+12,Part Number,Missing
+12,Lot Number,Missing
+12,Resistance,Missing
+12,Dimension,Missing
+12,Test Result,Missing
+13,Customer Name,Missing
+13,Customer P.O. Number,Missing
+13,Customer Part Number,Missing
+13,Customer Part Number Revision,Missing
+13,AEM Part Number,Missing
+13,AEM Lot Number,Missing
+13,AEM Date Code,Missing
+13,AEM Cage Code,Missing
+13,AEM Part Number,Missing
+13,AEM Lot Number,Missing
+13,AEM Date Code,Missing
+13,AEM Cage Code,Missing
+13,Customer Quality Clauses,Missing
+13,FAI Form 3,Missing
+13,Solderability Test Report,Missing
+13,DPA,Missing
+13,Visual Inspection Record,Missing
+13,Shipment Quantity,Missing
+13,Reel Labels,Missing
+13,Certificate of Conformance,Missing
+13,Route Sheet,Missing
+13,Part Number,Missing
+13,Lot Number,Missing
+13,Date,Missing
+13,Resistance,Missing
+13,Dimension,Missing
+13,Test Result,Missing
+14,Customer Name,Missing
+14,Customer P.O. Number,Missing
+14,Customer Part Number,Missing
+14,Customer Part Number Revision,Missing
+14,AEM Lot Number,Missing
+14,AEM Date Code,Missing
+14,AEM Cage Code,Missing
+14,AEM Lot Number,Missing
+14,AEM Date Code,Missing
+14,AEM Cage Code,Missing
+14,Customer Quality Clauses,Missing
+14,FAI Form 3,Missing
+14,Solderability Test Report,Missing
+14,Visual Inspection Record,Missing
+14,Shipment Quantity,Missing
+14,Reel Labels,Missing
+14,Certificate of Conformance,Missing
+14,Resistance,Missing
+14,Dimension,Missing
+14,Test Result,Missing
+15,Customer Name,Missing
+15,Customer P.O. Number,Missing
+15,Customer Part Number,Missing
+15,Customer Part Number Revision,Missing
+15,AEM Lot Number,Missing
+15,AEM Date Code,Missing
+15,AEM Cage Code,Missing
+15,AEM Lot Number,Missing
+15,AEM Date Code,Missing
+15,AEM Cage Code,Missing
+15,Customer Quality Clauses,Missing
+15,Solderability Test Report,Missing
+15,Visual Inspection Record,Missing
+15,Shipment Quantity,Missing
+15,Reel Labels,Missing
+15,Certificate of Conformance,Missing
+15,Route Sheet,Missing
+15,Resistance,Missing
+15,Dimension,Missing
+15,Test Result,Missing
+16,Customer Name,Missing
+16,Customer P.O. Number,Missing
+16,Customer Part Number,Missing
+16,Customer Part Number Revision,Missing
+16,AEM Part Number,Missing
+16,AEM Lot Number,Missing
+16,AEM Date Code,Missing
+16,AEM Cage Code,Missing
+16,AEM Part Number,Missing
+16,AEM Lot Number,Missing
+16,AEM Date Code,Missing
+16,AEM Cage Code,Missing
+16,Customer Quality Clauses,Missing
+16,FAI Form 3,Missing
+16,Solderability Test Report,Missing
+16,DPA,Missing
+16,Visual Inspection Record,Missing
+16,Shipment Quantity,Missing
+16,Reel Labels,Missing
+16,Certificate of Conformance,Missing
+16,Route Sheet,Missing
+16,Part Number,Missing
+16,Lot Number,Missing
+16,Date,Missing
+16,Resistance,Missing
+16,Dimension,Missing
+16,Test Result,Missing
+17,Customer Name,Missing
+17,Customer P.O. Number,Missing
+17,Customer Part Number,Missing
+17,Customer Part Number Revision,Missing
+17,AEM Part Number,Missing
+17,AEM Lot Number,Missing
+17,AEM Date Code,Missing
+17,AEM Cage Code,Missing
+17,AEM Part Number,Missing
+17,AEM Lot Number,Missing
+17,AEM Date Code,Missing
+17,AEM Cage Code,Missing
+17,Customer Quality Clauses,Missing
+17,FAI Form 3,Missing
+17,Solderability Test Report,Missing
+17,DPA,Missing
+17,Visual Inspection Record,Missing
+17,Shipment Quantity,Missing
+17,Reel Labels,Missing
+17,Certificate of Conformance,Missing
+17,Route Sheet,Missing
+17,Part Number,Missing
+17,Lot Number,Missing
+17,Resistance,Missing
+17,Dimension,Missing
+17,Test Result,Missing
+18,Customer Name,Missing
+18,Customer P.O. Number,Missing
+18,Customer Part Number,Missing
+18,Customer Part Number Revision,Missing
+18,AEM Part Number,Missing
+18,AEM Lot Number,Missing
+18,AEM Date Code,Missing
+18,AEM Cage Code,Missing
+18,AEM Part Number,Missing
+18,AEM Lot Number,Missing
+18,AEM Date Code,Missing
+18,AEM Cage Code,Missing
+18,Customer Quality Clauses,Missing
+18,FAI Form 3,Missing
+18,Solderability Test Report,Missing
+18,DPA,Missing
+18,Visual Inspection Record,Missing
+18,Shipment Quantity,Missing
+18,Reel Labels,Missing
+18,Certificate of Conformance,Missing
+18,Route Sheet,Missing
+18,Lot Number,Missing
+18,Resistance,Missing
+18,Dimension,Missing
+19,Customer Name,Missing
+19,Customer P.O. Number,Missing
+19,Customer Part Number,Missing
+19,Customer Part Number Revision,Missing
+19,AEM Part Number,Missing
+19,AEM Lot Number,Missing
+19,AEM Date Code,Missing
+19,AEM Cage Code,Missing
+19,AEM Part Number,Missing
+19,AEM Lot Number,Missing
+19,AEM Date Code,Missing
+19,AEM Cage Code,Missing
+19,Customer Quality Clauses,Missing
+19,FAI Form 3,Missing
+19,Solderability Test Report,Missing
+19,DPA,Missing
+19,Visual Inspection Record,Missing
+19,Shipment Quantity,Missing
+19,Reel Labels,Missing
+19,Certificate of Conformance,Missing
+19,Route Sheet,Missing
+19,Part Number,Missing
+19,Lot Number,Missing
+19,Resistance,Missing
+19,Dimension,Missing
+19,Test Result,Missing
+20,Customer Name,Missing
+20,Customer P.O. Number,Missing
+20,Customer Part Number,Missing
+20,Customer Part Number Revision,Missing
+20,AEM Part Number,Missing
+20,AEM Lot Number,Missing
+20,AEM Date Code,Missing
+20,AEM Cage Code,Missing
+20,AEM Part Number,Missing
+20,AEM Lot Number,Missing
+20,AEM Date Code,Missing
+20,AEM Cage Code,Missing
+20,Customer Quality Clauses,Missing
+20,FAI Form 3,Missing
+20,Solderability Test Report,Missing
+20,DPA,Missing
+20,Visual Inspection Record,Missing
+20,Shipment Quantity,Missing
+20,Reel Labels,Missing
+20,Certificate of Conformance,Missing
+20,Route Sheet,Missing
+20,Part Number,Missing
+20,Dimension,Missing
+20,Resistance,Out of range: TEST RECORD (TWM)
+21,Customer Name,Missing
+21,Customer P.O. Number,Missing
+21,Customer Part Number,Missing
+21,Customer Part Number Revision,Missing
+21,AEM Part Number,Missing
+21,AEM Lot Number,Missing
+21,AEM Date Code,Missing
+21,AEM Cage Code,Missing
+21,AEM Part Number,Missing
+21,AEM Lot Number,Missing
+21,AEM Date Code,Missing
+21,AEM Cage Code,Missing
+21,Customer Quality Clauses,Missing
+21,FAI Form 3,Missing
+21,Solderability Test Report,Missing
+21,DPA,Missing
+21,Visual Inspection Record,Missing
+21,Shipment Quantity,Missing
+21,Reel Labels,Missing
+21,Certificate of Conformance,Missing
+21,Route Sheet,Missing
+21,Lot Number,Missing
+21,Resistance,Missing
+21,Dimension,Missing
+22,Customer Name,Missing
+22,Customer P.O. Number,Missing
+22,Customer Part Number,Missing
+22,Customer Part Number Revision,Missing
+22,AEM Part Number,Missing
+22,AEM Lot Number,Missing
+22,AEM Date Code,Missing
+22,AEM Cage Code,Missing
+22,AEM Part Number,Missing
+22,AEM Lot Number,Missing
+22,AEM Date Code,Missing
+22,AEM Cage Code,Missing
+22,Customer Quality Clauses,Missing
+22,FAI Form 3,Missing
+22,Solderability Test Report,Missing
+22,DPA,Missing
+22,Visual Inspection Record,Missing
+22,Shipment Quantity,Missing
+22,Reel Labels,Missing
+22,Certificate of Conformance,Missing
+22,Route Sheet,Missing
+22,Part Number,Missing
+22,Lot Number,Missing
+22,Resistance,Missing
+22,Test Result,Missing
+22,Dimension,Out of range: s Measure against applicable spec
+23,Customer Name,Missing
+23,Customer P.O. Number,Missing
+23,Customer Part Number,Missing
+23,Customer Part Number Revision,Missing
+23,AEM Part Number,Missing
+23,AEM Lot Number,Missing
+23,AEM Date Code,Missing
+23,AEM Cage Code,Missing
+23,AEM Part Number,Missing
+23,AEM Lot Number,Missing
+23,AEM Date Code,Missing
+23,AEM Cage Code,Missing
+23,Customer Quality Clauses,Missing
+23,FAI Form 3,Missing
+23,Solderability Test Report,Missing
+23,DPA,Missing
+23,Visual Inspection Record,Missing
+23,Shipment Quantity,Missing
+23,Reel Labels,Missing
+23,Certificate of Conformance,Missing
+23,Route Sheet,Missing
+23,Part Number,Missing
+23,Lot Number,Missing
+23,Date,Missing
+23,Resistance,Missing
+23,Dimension,Missing
+23,Test Result,Missing
+24,Customer Name,Missing
+24,Customer P.O. Number,Missing
+24,Customer Part Number,Missing
+24,Customer Part Number Revision,Missing
+24,AEM Part Number,Missing
+24,AEM Lot Number,Missing
+24,AEM Date Code,Missing
+24,AEM Cage Code,Missing
+24,AEM Part Number,Missing
+24,AEM Lot Number,Missing
+24,AEM Date Code,Missing
+24,AEM Cage Code,Missing
+24,Customer Quality Clauses,Missing
+24,FAI Form 3,Missing
+24,Solderability Test Report,Missing
+24,DPA,Missing
+24,Visual Inspection Record,Missing
+24,Shipment Quantity,Missing
+24,Reel Labels,Missing
+24,Certificate of Conformance,Missing
+24,Route Sheet,Missing
+24,Part Number,Missing
+24,Lot Number,Missing
+24,Date,Missing
+24,Resistance,Missing
+24,Dimension,Missing
+24,Test Result,Missing
+25,Customer Name,Missing
+25,Customer P.O. Number,Missing
+25,Customer Part Number,Missing
+25,Customer Part Number Revision,Missing
+25,AEM Part Number,Missing
+25,AEM Lot Number,Missing
+25,AEM Date Code,Missing
+25,AEM Cage Code,Missing
+25,AEM Part Number,Missing
+25,AEM Lot Number,Missing
+25,AEM Date Code,Missing
+25,AEM Cage Code,Missing
+25,Customer Quality Clauses,Missing
+25,FAI Form 3,Missing
+25,Solderability Test Report,Missing
+25,DPA,Missing
+25,Visual Inspection Record,Missing
+25,Shipment Quantity,Missing
+25,Reel Labels,Missing
+25,Certificate of Conformance,Missing
+25,Route Sheet,Missing
+25,Part Number,Missing
+25,Lot Number,Missing
+25,Date,Missing
+25,Resistance,Missing
+25,Dimension,Missing
+25,Test Result,Missing
+26,Customer Name,Missing
+26,Customer P.O. Number,Missing
+26,Customer Part Number,Missing
+26,Customer Part Number Revision,Missing
+26,AEM Part Number,Missing
+26,AEM Lot Number,Missing
+26,AEM Date Code,Missing
+26,AEM Cage Code,Missing
+26,AEM Part Number,Missing
+26,AEM Lot Number,Missing
+26,AEM Date Code,Missing
+26,AEM Cage Code,Missing
+26,Customer Quality Clauses,Missing
+26,FAI Form 3,Missing
+26,Solderability Test Report,Missing
+26,DPA,Missing
+26,Visual Inspection Record,Missing
+26,Shipment Quantity,Missing
+26,Reel Labels,Missing
+26,Certificate of Conformance,Missing
+26,Route Sheet,Missing
+26,Part Number,Missing
+26,Lot Number,Missing
+26,Date,Missing
+26,Resistance,Missing
+26,Dimension,Missing
+26,Test Result,Missing
+27,Customer Name,Missing
+27,Customer P.O. Number,Missing
+27,Customer Part Number,Missing
+27,Customer Part Number Revision,Missing
+27,AEM Part Number,Missing
+27,AEM Lot Number,Missing
+27,AEM Date Code,Missing
+27,AEM Cage Code,Missing
+27,AEM Part Number,Missing
+27,AEM Lot Number,Missing
+27,AEM Date Code,Missing
+27,AEM Cage Code,Missing
+27,Customer Quality Clauses,Missing
+27,FAI Form 3,Missing
+27,Solderability Test Report,Missing
+27,DPA,Missing
+27,Visual Inspection Record,Missing
+27,Shipment Quantity,Missing
+27,Reel Labels,Missing
+27,Certificate of Conformance,Missing
+27,Route Sheet,Missing
+27,Part Number,Missing
+27,Lot Number,Missing
+27,Date,Missing
+27,Resistance,Missing
+27,Dimension,Missing
+27,Test Result,Missing
+28,Customer Name,Missing
+28,Customer P.O. Number,Missing
+28,Customer Part Number,Missing
+28,Customer Part Number Revision,Missing
+28,AEM Part Number,Missing
+28,AEM Lot Number,Missing
+28,AEM Date Code,Missing
+28,AEM Cage Code,Missing
+28,AEM Part Number,Missing
+28,AEM Lot Number,Missing
+28,AEM Date Code,Missing
+28,AEM Cage Code,Missing
+28,Customer Quality Clauses,Missing
+28,FAI Form 3,Missing
+28,Solderability Test Report,Missing
+28,DPA,Missing
+28,Visual Inspection Record,Missing
+28,Shipment Quantity,Missing
+28,Reel Labels,Missing
+28,Certificate of Conformance,Missing
+28,Route Sheet,Missing
+28,Part Number,Missing
+28,Lot Number,Missing
+28,Date,Missing
+28,Resistance,Missing
+28,Dimension,Missing
+28,Test Result,Missing
+29,Customer Name,Missing
+29,Customer P.O. Number,Missing
+29,Customer Part Number,Missing
+29,Customer Part Number Revision,Missing
+29,AEM Part Number,Missing
+29,AEM Lot Number,Missing
+29,AEM Date Code,Missing
+29,AEM Cage Code,Missing
+29,AEM Part Number,Missing
+29,AEM Lot Number,Missing
+29,AEM Date Code,Missing
+29,AEM Cage Code,Missing
+29,Customer Quality Clauses,Missing
+29,FAI Form 3,Missing
+29,Solderability Test Report,Missing
+29,DPA,Missing
+29,Visual Inspection Record,Missing
+29,Shipment Quantity,Missing
+29,Reel Labels,Missing
+29,Certificate of Conformance,Missing
+29,Route Sheet,Missing
+29,Part Number,Missing
+29,Lot Number,Missing
+29,Date,Missing
+29,Resistance,Missing
+29,Dimension,Missing
+29,Test Result,Missing
+30,Customer Name,Missing
+30,Customer P.O. Number,Missing
+30,Customer Part Number,Missing
+30,Customer Part Number Revision,Missing
+30,AEM Part Number,Missing
+30,AEM Lot Number,Missing
+30,AEM Date Code,Missing
+30,AEM Cage Code,Missing
+30,AEM Part Number,Missing
+30,AEM Lot Number,Missing
+30,AEM Date Code,Missing
+30,AEM Cage Code,Missing
+30,Customer Quality Clauses,Missing
+30,FAI Form 3,Missing
+30,Solderability Test Report,Missing
+30,DPA,Missing
+30,Visual Inspection Record,Missing
+30,Shipment Quantity,Missing
+30,Reel Labels,Missing
+30,Certificate of Conformance,Missing
+30,Route Sheet,Missing
+30,Part Number,Missing
+30,Lot Number,Missing
+30,Date,Missing
+30,Resistance,Missing
+30,Dimension,Missing
+30,Test Result,Missing
+31,Customer Name,Missing
+31,Customer P.O. Number,Missing
+31,Customer Part Number,Missing
+31,Customer Part Number Revision,Missing
+31,AEM Part Number,Missing
+31,AEM Lot Number,Missing
+31,AEM Date Code,Missing
+31,AEM Cage Code,Missing
+31,AEM Part Number,Missing
+31,AEM Lot Number,Missing
+31,AEM Date Code,Missing
+31,AEM Cage Code,Missing
+31,Customer Quality Clauses,Missing
+31,FAI Form 3,Missing
+31,Solderability Test Report,Missing
+31,DPA,Missing
+31,Visual Inspection Record,Missing
+31,Shipment Quantity,Missing
+31,Reel Labels,Missing
+31,Certificate of Conformance,Missing
+31,Route Sheet,Missing
+31,Part Number,Missing
+31,Lot Number,Missing
+31,Date,Missing
+31,Resistance,Missing
+31,Dimension,Missing
+31,Test Result,Missing
+32,Customer Name,Missing
+32,Customer P.O. Number,Missing
+32,Customer Part Number,Missing
+32,Customer Part Number Revision,Missing
+32,AEM Part Number,Missing
+32,AEM Lot Number,Missing
+32,AEM Date Code,Missing
+32,AEM Cage Code,Missing
+32,AEM Part Number,Missing
+32,AEM Lot Number,Missing
+32,AEM Date Code,Missing
+32,AEM Cage Code,Missing
+32,Customer Quality Clauses,Missing
+32,FAI Form 3,Missing
+32,Solderability Test Report,Missing
+32,DPA,Missing
+32,Visual Inspection Record,Missing
+32,Shipment Quantity,Missing
+32,Reel Labels,Missing
+32,Certificate of Conformance,Missing
+32,Route Sheet,Missing
+32,Part Number,Missing
+32,Lot Number,Missing
+32,Date,Missing
+32,Resistance,Missing
+32,Dimension,Missing
+32,Test Result,Missing
+33,Customer Name,Missing
+33,Customer P.O. Number,Missing
+33,Customer Part Number,Missing
+33,Customer Part Number Revision,Missing
+33,AEM Part Number,Missing
+33,AEM Lot Number,Missing
+33,AEM Date Code,Missing
+33,AEM Cage Code,Missing
+33,AEM Part Number,Missing
+33,AEM Lot Number,Missing
+33,AEM Date Code,Missing
+33,AEM Cage Code,Missing
+33,Customer Quality Clauses,Missing
+33,FAI Form 3,Missing
+33,Solderability Test Report,Missing
+33,DPA,Missing
+33,Visual Inspection Record,Missing
+33,Shipment Quantity,Missing
+33,Reel Labels,Missing
+33,Certificate of Conformance,Missing
+33,Route Sheet,Missing
+33,Part Number,Missing
+33,Lot Number,Missing
+33,Date,Missing
+33,Resistance,Missing
+33,Dimension,Missing
+33,Test Result,Missing
+34,Customer Name,Missing
+34,Customer P.O. Number,Missing
+34,Customer Part Number,Missing
+34,Customer Part Number Revision,Missing
+34,AEM Part Number,Missing
+34,AEM Lot Number,Missing
+34,AEM Date Code,Missing
+34,AEM Cage Code,Missing
+34,AEM Part Number,Missing
+34,AEM Lot Number,Missing
+34,AEM Date Code,Missing
+34,AEM Cage Code,Missing
+34,Customer Quality Clauses,Missing
+34,FAI Form 3,Missing
+34,Solderability Test Report,Missing
+34,DPA,Missing
+34,Visual Inspection Record,Missing
+34,Shipment Quantity,Missing
+34,Reel Labels,Missing
+34,Certificate of Conformance,Missing
+34,Route Sheet,Missing
+34,Part Number,Missing
+34,Lot Number,Missing
+34,Date,Missing
+34,Resistance,Missing
+34,Dimension,Missing
+34,Test Result,Missing
+35,Customer Name,Missing
+35,Customer P.O. Number,Missing
+35,Customer Part Number,Missing
+35,Customer Part Number Revision,Missing
+35,AEM Lot Number,Missing
+35,AEM Date Code,Missing
+35,AEM Cage Code,Missing
+35,AEM Lot Number,Missing
+35,AEM Date Code,Missing
+35,AEM Cage Code,Missing
+35,Customer Quality Clauses,Missing
+35,FAI Form 3,Missing
+35,Solderability Test Report,Missing
+35,DPA,Missing
+35,Shipment Quantity,Missing
+35,Reel Labels,Missing
+35,Certificate of Conformance,Missing
+35,Route Sheet,Missing
+35,Resistance,Missing
+35,Dimension,Missing
+35,Test Result,Missing
+36,Customer Name,Missing
+36,Customer P.O. Number,Missing
+36,Customer Part Number,Missing
+36,Customer Part Number Revision,Missing
+36,AEM Part Number,Missing
+36,AEM Lot Number,Missing
+36,AEM Date Code,Missing
+36,AEM Cage Code,Missing
+36,AEM Part Number,Missing
+36,AEM Lot Number,Missing
+36,AEM Date Code,Missing
+36,AEM Cage Code,Missing
+36,Customer Quality Clauses,Missing
+36,FAI Form 3,Missing
+36,Solderability Test Report,Missing
+36,DPA,Missing
+36,Visual Inspection Record,Missing
+36,Shipment Quantity,Missing
+36,Reel Labels,Missing
+36,Certificate of Conformance,Missing
+36,Route Sheet,Missing
+36,Part Number,Missing
+36,Lot Number,Missing
+36,Date,Missing
+36,Resistance,Missing
+36,Dimension,Missing
+36,Test Result,Missing
+37,Customer Name,Missing
+37,Customer P.O. Number,Missing
+37,Customer Part Number,Missing
+37,Customer Part Number Revision,Missing
+37,AEM Lot Number,Missing
+37,AEM Date Code,Missing
+37,AEM Lot Number,Missing
+37,AEM Date Code,Missing
+37,Customer Quality Clauses,Missing
+37,FAI Form 3,Missing
+37,Solderability Test Report,Missing
+37,DPA,Missing
+37,Visual Inspection Record,Missing
+37,Shipment Quantity,Missing
+37,Reel Labels,Missing
+37,Route Sheet,Missing
+37,Lot Number,Missing
+37,Resistance,Missing
+37,Dimension,Missing
+37,Test Result,Missing
+38,Customer Name,Missing
+38,Customer P.O. Number,Missing
+38,Customer Part Number,Missing
+38,Customer Part Number Revision,Missing
+38,AEM Part Number,Missing
+38,AEM Date Code,Missing
+38,AEM Cage Code,Missing
+38,AEM Part Number,Missing
+38,AEM Date Code,Missing
+38,AEM Cage Code,Missing
+38,Customer Quality Clauses,Missing
+38,FAI Form 3,Missing
+38,Solderability Test Report,Missing
+38,DPA,Missing
+38,Visual Inspection Record,Missing
+38,Shipment Quantity,Missing
+38,Reel Labels,Missing
+38,Certificate of Conformance,Missing
+38,Route Sheet,Missing
+38,Dimension,Missing
+38,Test Result,Missing
+38,Resistance,Out of range: Record data pack
+39,Customer Name,Missing
+39,Customer P.O. Number,Missing
+39,Customer Part Number,Missing
+39,Customer Part Number Revision,Missing
+39,AEM Part Number,Missing
+39,AEM Lot Number,Missing
+39,AEM Date Code,Missing
+39,AEM Cage Code,Missing
+39,AEM Part Number,Missing
+39,AEM Lot Number,Missing
+39,AEM Date Code,Missing
+39,AEM Cage Code,Missing
+39,Customer Quality Clauses,Missing
+39,FAI Form 3,Missing
+39,Solderability Test Report,Missing
+39,DPA,Missing
+39,Visual Inspection Record,Missing
+39,Shipment Quantity,Missing
+39,Reel Labels,Missing
+39,Certificate of Conformance,Missing
+39,Route Sheet,Missing
+39,Dimension,Missing
+39,Test Result,Missing
+39,Resistance,Out of range: Record jncluded in
+All Pages,Part Number,Inconsistent values
+All Pages,Lot Number,Inconsistent values
+All Pages,Date,Inconsistent values
