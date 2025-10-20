@@ -118,44 +118,31 @@ def set_progress(progress_key, percent=None, csv_filename=None, done=None):
         if done is not None:
             data['done'] = int(bool(done))
         if data:
-            # Try a small retry/backoff to handle transient Redis errors before falling back
-            max_attempts = 3
-            attempt = 0
-            last_exc = None
-            payload = {k: str(v) for k, v in data.items()}
-            while attempt < max_attempts:
+            attempts = 3
+            backoff_base = 0.25
+            for attempt in range(1, attempts + 1):
                 try:
-                    redis_conn.hset(namespaced_key, mapping=payload)
-                    # If marking done, set a TTL so keys don't grow indefinitely
-                    if redis_conn:
-                        data = {}
-                        if percent is not None:
-                            data['percent'] = int(percent)
-                        if csv_filename is not None:
-                            data['csv_filename'] = csv_filename
-                        if done is not None:
-                            data['done'] = int(bool(done))
-                        if data:
-                            # Try a few times with exponential backoff for transient Redis errors
-                            attempts = 3
-                            backoff_base = 0.25
-                            for attempt in range(1, attempts + 1):
-                                try:
-                                    redis_conn.hset(namespaced_key, mapping={k: str(v) for k, v in data.items()})
-                                    # If marking done, set a TTL so keys don't grow indefinitely
-                                    if done:
-                                        try:
-                                            redis_conn.expire(namespaced_key, PROGRESS_KEY_TTL_SECONDS)
-                                        except Exception:
-                                            logger.exception('Failed to set TTL on progress key %s', namespaced_key)
-                                    return
-                                except Exception:
-                                    logger.exception('Attempt %s: Failed to write progress to Redis for key %s', attempt, progress_key)
-                                    if attempt < attempts:
-                                        time.sleep(backoff_base * (2 ** (attempt - 1)))
-                                    else:
-                                        logger.warning('All attempts failed; falling back to in-memory progress for key %s', progress_key)
-                                        # fall through to memory fallback
+                    redis_conn.hset(namespaced_key, mapping={k: str(v) for k, v in data.items()})
+                    if done:
+                        try:
+                            redis_conn.expire(namespaced_key, PROGRESS_KEY_TTL_SECONDS)
+                        except Exception:
+                            logger.exception('Failed to set TTL on progress key %s', namespaced_key)
+                    return
+                except Exception:
+                    logger.exception('Attempt %s: Failed to write progress to Redis for key %s', attempt, progress_key)
+                    if attempt < attempts:
+                        time.sleep(backoff_base * (2 ** (attempt - 1)))
+                    else:
+                        logger.warning('All attempts failed; falling back to in-memory progress for key %s', progress_key)
+                        break
+    # Memory fallback if Redis not configured or all Redis attempts failed
+    with progress_store_lock:
+        prog = progress_store.get(progress_key)
+        if not prog:
+            prog = {'percent': 0, 'done': False, 'csv_filename': None}
+            progress_store[progress_key] = prog
+        if percent is not None:
             prog['percent'] = int(percent)
         if csv_filename is not None:
             prog['csv_filename'] = csv_filename
@@ -816,34 +803,7 @@ def diagnostics():
     return jsonify(info)
 
 
-@app.route('/api/health', methods=['GET'])
-def health():
-    """Return quick health info: redis reachability, redis url masked, and RQ queue size if available."""
-    info = {'ok': True}
-    # Redis info
-    info['redis_configured'] = bool(REDIS_URL)
-    info['redis_reachable'] = False
-    if REDIS_URL and redis_conn:
-        try:
-            info['redis_reachable'] = bool(redis_conn.ping())
-        except Exception:
-            info['redis_reachable'] = False
-    # RQ info (approximate queue length)
-    try:
-        if rq_queue and redis_conn:
-            # RQ doesn't expose length directly; inspect the Redis list for simplicity
-            q_name = rq_queue.name
-            q_key = f"rq:queue:{q_name}"
-            try:
-                info['queue_length'] = redis_conn.llen(q_key)
-            except Exception:
-                info['queue_length'] = None
-        else:
-            info['queue_length'] = None
-    except Exception:
-        info['queue_length'] = None
 
-    return jsonify(info)
 
 
 @app.route('/api/health', methods=['GET'])
