@@ -720,11 +720,17 @@ def api_validate():
         if not redis_conn:
             try:
                 df, csv_filename = validate_file(upload_path, progress_key=progress_key, result_key=progress_key)
-                # progress already finalized by validate_file
-                return jsonify({'progressKey': progress_key, 'csv_filename': csv_filename})
+                # Ensure we return the canonical progress state so callers/pollers see the final result
+                prog = get_progress_data(progress_key)
+                return jsonify({'progressKey': progress_key, 'csv_filename': csv_filename, 'progress': prog})
             except Exception as e:
                 logger.exception('Synchronous validation failed for %s', upload_path)
-                return jsonify({'error': str(e)}), 500
+                # Finalize progress with an error state so pollers don't hang
+                try:
+                    set_progress(progress_key, percent=100, csv_filename=None, done=True)
+                except Exception:
+                    logger.exception('Failed to finalize progress after synchronous validation exception for key %s', progress_key)
+                return jsonify({'error': str(e), 'progressKey': progress_key}), 500
 
         # Otherwise, try to enqueue the validation job to Redis queue
         if rq_queue:
