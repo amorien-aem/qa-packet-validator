@@ -64,6 +64,9 @@ def validate_pdf(pdf_path, export_dir, progress_key=None, result_key=None):
         "Part Number", "Lot Number", "Date", "Resistance", "Dimension", "Test Result"
     ]
 
+    # Precompile regex patterns for all fields for speed
+    FIELD_PATTERNS = {field: re.compile(rf"{re.escape(field)}[:\s]*([^\n]+)", re.IGNORECASE) for field in REQUIRED_FIELDS}
+
     NUMERICAL_RANGES = {
         "Resistance": (95, 105),
         "Dimension": (0.9, 1.1)
@@ -77,12 +80,54 @@ def validate_pdf(pdf_path, export_dir, progress_key=None, result_key=None):
     field_value_map = defaultdict(list)  # field -> list of (page, value)
 
     def extract_fields(text):
+        """Extract fields by locating field label positions and taking the text up to the next label.
+        This captures multi-line values and cases where a colon isn't present.
+        Falls back to the simple regex if positional extraction doesn't find a value.
+        """
         fields = {}
+        if not text:
+            return fields
+
+        # Work with the original text for extraction but perform case-insensitive searches
+        lower_text = text.lower()
+
+        # Find all label occurrences with their span
+        occurrences = []  # list of (start_index, end_index, field)
         for field in REQUIRED_FIELDS:
-            pattern = rf"{field}[:\s]*([^\n]+)"
-            match = re.search(pattern, text, re.IGNORECASE)
-            if match:
-                fields[field] = match.group(1).strip()
+            low_field = field.lower()
+            for m in re.finditer(re.escape(low_field), lower_text):
+                occurrences.append((m.start(), m.end(), field))
+
+        # If no positional occurrences found, fall back to simple pattern matching
+        if not occurrences:
+            for field, pattern in FIELD_PATTERNS.items():
+                match = pattern.search(text)
+                if match:
+                    fields[field] = match.group(1).strip()
+            return fields
+
+        # Sort occurrences by position
+        occurrences.sort(key=lambda x: x[0])
+
+        for idx, (start, end, field) in enumerate(occurrences):
+            value_start = end
+            value_end = occurrences[idx + 1][0] if idx + 1 < len(occurrences) else len(text)
+            raw_value = text[value_start:value_end]
+            # Remove leading separators and whitespace
+            raw_value = re.sub(r"^[\s:.-]*", "", raw_value)
+            # Trim trailing whitespace/newlines and collapse internal whitespace
+            value = re.sub(r"\s+", " ", raw_value).strip()
+            # Limit to a reasonable length to avoid grabbing huge blocks
+            if value:
+                fields[field] = value[:1000]
+
+        # For any required field still missing, try the regex fallback once
+        for field, pattern in FIELD_PATTERNS.items():
+            if field not in fields:
+                match = pattern.search(text)
+                if match:
+                    fields[field] = match.group(1).strip()
+
         return fields
 
     def validate_numerical(field, value):
@@ -101,7 +146,14 @@ def validate_pdf(pdf_path, export_dir, progress_key=None, result_key=None):
     total_pages = len(doc)
     for page_num in range(total_pages):
         page = doc.load_page(page_num)
-        text = extract_text_with_ocr(page)
+        # Try to extract text directly; only use OCR if text is empty
+        text = page.get_text()
+        if not text.strip():
+            # Only do OCR if absolutely necessary
+            pix = page.get_pixmap(dpi=150)
+            img = Image.open(io.BytesIO(pix.tobytes("png")))
+            text = pytesseract.image_to_string(img)
+            img.close()
         fields = extract_fields(text)
         all_fields.append(fields)
 
@@ -121,7 +173,8 @@ def validate_pdf(pdf_path, export_dir, progress_key=None, result_key=None):
         # Update progress
         if progress_key:
             progress_store[progress_key]['percent'] = int(((page_num + 1) / total_pages) * 100)
-        print(f"Processed page {page_num+1}/{total_pages}")
+        # Remove or comment out print for speed in production
+        # print(f"Processed page {page_num+1}/{total_pages}")
 
     for field in ["Part Number", "Lot Number", "Date"]:
         if not check_consistency(field):
