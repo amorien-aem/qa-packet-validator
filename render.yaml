@@ -7,3 +7,27 @@ services:
     build:
       commands:
         - RUN apt-get update && apt-get install -y tesseract-ocr && rm -rf /var/lib/apt/lists/*
+  - type: worker
+    name: qa-validator-worker
+    env: docker
+    plan: free
+    autoDeploy: true
+    startCommand: rq worker -u $REDIS_URL default
+    build:
+      commands:
+        - RUN apt-get update && apt-get install -y tesseract-ocr && rm -rf /var/lib/apt/lists/*
+    envVars:
+      - key: REDIS_URL
+        value: redis://<host>:6379/0
+      - key: S3_BUCKET
+        value: ''
+      - key: AWS_ACCESS_KEY_ID
+        value: ''
+      - key: AWS_SECRET_ACCESS_KEY
+        value: ''
+      - key: AWS_REGION
+        value: us-east-1
+      - key: PROGRESS_KEY_PREFIX
+        value: qa-validator:progress:
+      - key: PROGRESS_KEY_TTL_DAYS
+        value: '7'

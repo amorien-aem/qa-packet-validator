@@ -31,6 +31,7 @@ import sys
 import psutil
 import boto3
 from botocore.exceptions import ClientError
+from urllib.parse import urlparse
 try:
     from redis import Redis
     from rq import Queue
@@ -52,9 +53,39 @@ app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 app.config['EXPORTS_FOLDER'] = EXPORTS_FOLDER
 app.config['MAX_CONTENT_LENGTH'] = int(os.environ.get('MAX_CONTENT_LENGTH', 10 * 1024 * 1024))  # 10MB default
 
-# Logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger('qa-validator')
+# Structured logging and optional Sentry
+SENTRY_DSN = os.environ.get('SENTRY_DSN')
+JSON_LOGS = os.environ.get('JSON_LOGS', '1') in ('1', 'true', 'True')
+
+# Try to initialize Sentry if DSN provided
+try:
+    if SENTRY_DSN:
+        import sentry_sdk
+
+        sentry_sdk.init(dsn=SENTRY_DSN, traces_sample_rate=float(os.environ.get('SENTRY_TRACES_SAMPLE_RATE', '0.0')))
+except Exception:
+    # don't fail startup just because Sentry isn't available
+    pass
+
+# Configure logging
+if JSON_LOGS:
+    try:
+        from pythonjsonlogger import jsonlogger
+
+        handler = logging.StreamHandler()
+        fmt = jsonlogger.JsonFormatter('%(asctime)s %(levelname)s %(name)s %(message)s')
+        handler.setFormatter(fmt)
+        logger = logging.getLogger('qa-validator')
+        logger.setLevel(os.environ.get('LOG_LEVEL', 'INFO'))
+        # Remove default handlers then add JSON handler
+        logging.root.handlers = []
+        logging.root.addHandler(handler)
+    except Exception:
+        logging.basicConfig(level=os.environ.get('LOG_LEVEL', 'INFO'))
+        logger = logging.getLogger('qa-validator')
+else:
+    logging.basicConfig(level=os.environ.get('LOG_LEVEL', 'INFO'))
+    logger = logging.getLogger('qa-validator')
 
 # Try to configure Redis if provided (Render/Production)
 REDIS_URL = os.environ.get('REDIS_URL')
@@ -68,9 +99,16 @@ if REDIS_URL:
     except Exception as e:
         logger.exception('Failed to connect to Redis: %s', e)
 
+# Progress key prefix and TTL (days)
+PROGRESS_KEY_PREFIX = os.environ.get('PROGRESS_KEY_PREFIX', 'qa-validator:progress:')
+_PROGRESS_TTL_DAYS = int(os.environ.get('PROGRESS_KEY_TTL_DAYS', '7'))
+PROGRESS_KEY_TTL_SECONDS = _PROGRESS_TTL_DAYS * 24 * 3600
+
 
 def set_progress(progress_key, percent=None, csv_filename=None, done=None):
     """Set progress in Redis if configured, otherwise in the in-memory store."""
+    # Use namespaced key internally to avoid collisions
+    namespaced_key = f"{PROGRESS_KEY_PREFIX}{progress_key}"
     if redis_conn:
         data = {}
         if percent is not None:
@@ -80,26 +118,38 @@ def set_progress(progress_key, percent=None, csv_filename=None, done=None):
         if done is not None:
             data['done'] = int(bool(done))
         if data:
-            redis_conn.hset(progress_key, mapping={k: str(v) for k, v in data.items()})
-    else:
-        with progress_store_lock:
-            prog = progress_store.get(progress_key)
-            if not prog:
-                prog = {'percent': 0, 'done': False, 'csv_filename': None}
-                progress_store[progress_key] = prog
-            if percent is not None:
-                prog['percent'] = int(percent)
-            if csv_filename is not None:
-                prog['csv_filename'] = csv_filename
-            if done is not None:
-                prog['done'] = bool(done)
+            try:
+                redis_conn.hset(namespaced_key, mapping={k: str(v) for k, v in data.items()})
+                # If marking done, set a TTL so keys don't grow indefinitely
+                if done:
+                    try:
+                        redis_conn.expire(namespaced_key, PROGRESS_KEY_TTL_SECONDS)
+                    except Exception:
+                        logger.exception('Failed to set TTL on progress key %s', namespaced_key)
+                return
+            except Exception:
+                logger.exception('Failed to write progress to Redis for key %s, falling back to memory', progress_key)
+                # fall through to memory fallback
+    # Memory fallback if Redis not configured or failed
+    with progress_store_lock:
+        prog = progress_store.get(progress_key)
+        if not prog:
+            prog = {'percent': 0, 'done': False, 'csv_filename': None}
+            progress_store[progress_key] = prog
+        if percent is not None:
+            prog['percent'] = int(percent)
+        if csv_filename is not None:
+            prog['csv_filename'] = csv_filename
+        if done is not None:
+            prog['done'] = bool(done)
 
 
 def get_progress_data(progress_key):
     """Retrieve progress dict from Redis or memory-alike structure."""
+    namespaced_key = f"{PROGRESS_KEY_PREFIX}{progress_key}"
     if redis_conn:
         try:
-            h = redis_conn.hgetall(progress_key)
+            h = redis_conn.hgetall(namespaced_key)
             if not h:
                 return {'percent': 0, 'done': False, 'csv_filename': None}
             # decode bytes to str
@@ -115,6 +165,27 @@ def get_progress_data(progress_key):
     else:
         with progress_store_lock:
             return progress_store.get(progress_key, {'percent': 0, 'done': False, 'csv_filename': None})
+
+
+@app.route('/api/redis_ping', methods=['GET'])
+def redis_ping():
+    """Return masked Redis host:port and whether a ping succeeds. Does not reveal credentials."""
+    if not REDIS_URL or not redis_conn:
+        return jsonify({'redis_configured': False, 'host': None, 'port': None, 'reachable': False})
+    try:
+        parsed = urlparse(REDIS_URL)
+        host = parsed.hostname
+        port = parsed.port
+    except Exception:
+        host = None
+        port = None
+    reachable = False
+    try:
+        reachable = bool(redis_conn.ping())
+    except Exception:
+        logger.exception('Redis ping failed')
+        reachable = False
+    return jsonify({'redis_configured': True, 'host': host, 'port': port, 'reachable': reachable})
 
 
 def upload_to_s3(local_path, bucket, key_prefix=''):
@@ -384,8 +455,15 @@ def validate_file(filepath, progress_key=None, result_key=None):
         df = None
         csv_path, excel_path, dashboard_path, anomaly_count, critical_count = validate_pdf(filepath, EXPORTS_FOLDER, progress_key, result_key)
         df = pd.read_csv(csv_path)
+        csv_filename = os.path.basename(csv_path)
         print(f"validate_file: CSV generated at {csv_path}")
-        return df, os.path.basename(csv_path)
+        # Defensive: ensure progress finalized when called directly (validate_pdf should already set this)
+        if progress_key and result_key:
+            try:
+                set_progress(progress_key, percent=100, csv_filename=csv_filename, done=True)
+            except Exception:
+                logger.exception('Failed to set final progress in validate_file for key %s', progress_key)
+        return df, csv_filename
     else:
         data = {'filename': [os.path.basename(filepath)], 'status': ['validated']}
         df = pd.DataFrame(data)
@@ -393,9 +471,7 @@ def validate_file(filepath, progress_key=None, result_key=None):
         csv_path = os.path.join(EXPORTS_FOLDER, csv_filename)
         df.to_csv(csv_path, index=False)
         if progress_key and result_key:
-            progress_store[progress_key]['percent'] = 100
-            progress_store[progress_key]['csv_filename'] = csv_filename
-            progress_store[progress_key]['done'] = True
+            set_progress(progress_key, percent=100, csv_filename=csv_filename, done=True)
         print(f"validate_file: Non-PDF CSV generated at {csv_path}")
         return df, csv_filename
 
@@ -514,11 +590,12 @@ def api_validate():
         set_progress(progress_key, percent=0, csv_filename=None, done=False)
 
         def run_validation_local(progress_key, upload_path, filename):
+            # Run validation but guarantee final progress write in a finally block
+            csv_filename = None
             try:
                 print(f"Starting validation for {upload_path}")
                 csv_path, excel_path, dashboard_path, anomaly_count, critical_count = validate_pdf(upload_path, EXPORTS_FOLDER, progress_key, progress_key)
                 csv_filename = os.path.basename(csv_path)
-                set_progress(progress_key, percent=100, csv_filename=csv_filename, done=True)
                 print(f"Validation finished for {upload_path}, CSV: {csv_filename}")
             except Exception as e:
                 error_csv = os.path.splitext(filename)[0] + "_validation_summary.csv"
@@ -532,11 +609,18 @@ def api_validate():
                         writer.writerow(["Traceback:"])
                         for line in tb.splitlines():
                             writer.writerow([line])
-                    set_progress(progress_key, percent=100, csv_filename=error_csv, done=True)
+                    csv_filename = error_csv
                 except Exception as file_error:
                     print(f"Error writing error CSV: {file_error}")
-                    set_progress(progress_key, percent=100, csv_filename=None, done=True)
+                    csv_filename = None
                 print(f"Validation error: {e}")
+            finally:
+                # Ensure the progress store is finalized so callers/pollers always see a completed state
+                if progress_key:
+                    try:
+                        set_progress(progress_key, percent=100, csv_filename=csv_filename, done=True)
+                    except Exception:
+                        logger.exception('Failed to finalize progress in run_validation_local for key %s', progress_key)
 
         if rq_queue:
             # Enqueue the validation job to Redis queue
