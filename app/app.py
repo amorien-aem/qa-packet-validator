@@ -4,6 +4,7 @@ import time
 
 # In-memory progress store (for demo; use Redis or DB for production)
 progress_store = {}
+progress_store_lock = threading.Lock()
 
 import os
 from flask import Flask, request, send_from_directory, jsonify, render_template_string
@@ -21,6 +22,21 @@ import pytesseract
 from PIL import Image
 import io
 import uuid
+import shutil
+import traceback
+import subprocess
+import logging
+import platform
+import sys
+import psutil
+import boto3
+from botocore.exceptions import ClientError
+try:
+    from redis import Redis
+    from rq import Queue
+except Exception:
+    Redis = None
+    Queue = None
 
 # Use absolute paths for directories to avoid issues in cloud environments
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
@@ -34,6 +50,105 @@ os.makedirs(EXPORTS_FOLDER, exist_ok=True)
 app = Flask(__name__)
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 app.config['EXPORTS_FOLDER'] = EXPORTS_FOLDER
+app.config['MAX_CONTENT_LENGTH'] = int(os.environ.get('MAX_CONTENT_LENGTH', 10 * 1024 * 1024))  # 10MB default
+
+# Logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger('qa-validator')
+
+# Try to configure Redis if provided (Render/Production)
+REDIS_URL = os.environ.get('REDIS_URL')
+redis_conn = None
+rq_queue = None
+if REDIS_URL:
+    try:
+        redis_conn = Redis.from_url(REDIS_URL)
+        rq_queue = Queue('default', connection=redis_conn)
+        logger.info('Connected to Redis for background jobs')
+    except Exception as e:
+        logger.exception('Failed to connect to Redis: %s', e)
+
+
+def set_progress(progress_key, percent=None, csv_filename=None, done=None):
+    """Set progress in Redis if configured, otherwise in the in-memory store."""
+    if redis_conn:
+        data = {}
+        if percent is not None:
+            data['percent'] = int(percent)
+        if csv_filename is not None:
+            data['csv_filename'] = csv_filename
+        if done is not None:
+            data['done'] = int(bool(done))
+        if data:
+            redis_conn.hset(progress_key, mapping={k: str(v) for k, v in data.items()})
+    else:
+        with progress_store_lock:
+            prog = progress_store.get(progress_key)
+            if not prog:
+                prog = {'percent': 0, 'done': False, 'csv_filename': None}
+                progress_store[progress_key] = prog
+            if percent is not None:
+                prog['percent'] = int(percent)
+            if csv_filename is not None:
+                prog['csv_filename'] = csv_filename
+            if done is not None:
+                prog['done'] = bool(done)
+
+
+def get_progress_data(progress_key):
+    """Retrieve progress dict from Redis or memory-alike structure."""
+    if redis_conn:
+        try:
+            h = redis_conn.hgetall(progress_key)
+            if not h:
+                return {'percent': 0, 'done': False, 'csv_filename': None}
+            # decode bytes to str
+            decoded = {k.decode() if isinstance(k, bytes) else k: v.decode() if isinstance(v, bytes) else v for k, v in h.items()}
+            return {
+                'percent': int(decoded.get('percent', 0)),
+                'done': bool(int(decoded.get('done', 0))) if decoded.get('done') is not None else False,
+                'csv_filename': decoded.get('csv_filename')
+            }
+        except Exception:
+            logger.exception('Error reading progress from Redis for key %s', progress_key)
+            return {'percent': 0, 'done': False, 'csv_filename': None}
+    else:
+        with progress_store_lock:
+            return progress_store.get(progress_key, {'percent': 0, 'done': False, 'csv_filename': None})
+
+
+def upload_to_s3(local_path, bucket, key_prefix=''):
+    """Upload file to S3 and return the object key."""
+    s3 = boto3.client('s3')
+    key = os.path.join(key_prefix, os.path.basename(local_path)) if key_prefix else os.path.basename(local_path)
+    try:
+        s3.upload_file(local_path, bucket, key)
+        return key
+    except ClientError as e:
+        logger.exception('S3 upload failed: %s', e)
+        return None
+
+
+def presigned_url(bucket, key, expires=3600):
+    s3 = boto3.client('s3')
+    try:
+        url = s3.generate_presigned_url('get_object', Params={'Bucket': bucket, 'Key': key}, ExpiresIn=expires)
+        return url
+    except ClientError as e:
+        logger.exception('Presigned URL generation failed: %s', e)
+        return None
+
+# Ensure pytesseract knows the tesseract binary location in deployed environments
+tess_path = shutil.which('tesseract')
+if tess_path:
+    try:
+        pytesseract.pytesseract.tesseract_cmd = tess_path
+        ver = subprocess.check_output([tess_path, '--version'], stderr=subprocess.STDOUT, text=True).splitlines()[0]
+        logger.info("Tesseract found: %s (%s)", tess_path, ver)
+    except Exception as e:
+        logger.exception("Tesseract found at %s but failed to run --version: %s", tess_path, e)
+else:
+    logger.warning("Tesseract binary not found on PATH; OCR fallback may fail on this host.")
 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
@@ -152,8 +267,10 @@ def validate_pdf(pdf_path, export_dir, progress_key=None, result_key=None):
             # Only do OCR if absolutely necessary
             pix = page.get_pixmap(dpi=150)
             img = Image.open(io.BytesIO(pix.tobytes("png")))
-            text = pytesseract.image_to_string(img)
-            img.close()
+            try:
+                text = pytesseract.image_to_string(img)
+            finally:
+                img.close()
         fields = extract_fields(text)
         all_fields.append(fields)
 
@@ -172,9 +289,10 @@ def validate_pdf(pdf_path, export_dir, progress_key=None, result_key=None):
 
         # Update progress
         if progress_key:
-            progress_store[progress_key]['percent'] = int(((page_num + 1) / total_pages) * 100)
-        # Remove or comment out print for speed in production
-        # print(f"Processed page {page_num+1}/{total_pages}")
+            set_progress(progress_key, percent=int(((page_num + 1) / total_pages) * 100))
+        # Log progress at a coarse level
+        if (page_num + 1) % 10 == 0 or page_num == total_pages - 1:
+            logger.info('Processed page %s/%s for %s', page_num + 1, total_pages, base_name)
 
     for field in ["Part Number", "Lot Number", "Date"]:
         if not check_consistency(field):
@@ -242,14 +360,22 @@ def validate_pdf(pdf_path, export_dir, progress_key=None, result_key=None):
     plt.xticks(rotation=90)
     plt.tight_layout()
     plt.savefig(dashboard_path)
+    # If S3 configured, upload CSV and dashboard, and return presigned URL through progress store
+    s3_bucket = os.environ.get('S3_BUCKET')
+    s3_prefix = os.environ.get('S3_PREFIX', '')
+    if s3_bucket:
+        csv_key = upload_to_s3(csv_path, s3_bucket, s3_prefix)
+        dash_key = upload_to_s3(dashboard_path, s3_bucket, s3_prefix)
+        field_info_key = upload_to_s3(field_info_csv, s3_bucket, s3_prefix)
+        if progress_key and result_key:
+            # store the object key as csv_filename so the API can return a presigned URL
+            set_progress(progress_key, percent=100, csv_filename=os.path.basename(csv_key) if csv_key else None, done=True)
+    else:
+        # Save result in progress store for robust retrieval
+        if progress_key and result_key:
+            set_progress(progress_key, percent=100, csv_filename=os.path.basename(csv_path), done=True)
 
-    # Save result in progress_store for robust retrieval
-    if progress_key and result_key:
-        progress_store[progress_key]['percent'] = 100
-        progress_store[progress_key]['csv_filename'] = os.path.basename(csv_path)
-        progress_store[progress_key]['done'] = True
-
-    print(f"Validation complete. CSV saved at {csv_path}")
+    logger.info('Validation complete. CSV saved at %s', csv_path)
     return csv_path, excel_path, dashboard_path, len(anomalies), len(critical_issues)
 
 def validate_file(filepath, progress_key=None, result_key=None):
@@ -385,45 +511,70 @@ def api_validate():
 
         # Generate a unique progress key
         progress_key = str(uuid.uuid4())
-        progress_store[progress_key] = {'percent': 0, 'done': False, 'csv_filename': None}
+        set_progress(progress_key, percent=0, csv_filename=None, done=False)
 
-        def run_validation(progress_key, upload_path, filename):
+        def run_validation_local(progress_key, upload_path, filename):
             try:
                 print(f"Starting validation for {upload_path}")
-                df, csv_filename = validate_file(upload_path, progress_key, progress_key)
-                progress_store[progress_key]['csv_filename'] = csv_filename
+                csv_path, excel_path, dashboard_path, anomaly_count, critical_count = validate_pdf(upload_path, EXPORTS_FOLDER, progress_key, progress_key)
+                csv_filename = os.path.basename(csv_path)
+                set_progress(progress_key, percent=100, csv_filename=csv_filename, done=True)
                 print(f"Validation finished for {upload_path}, CSV: {csv_filename}")
             except Exception as e:
                 error_csv = os.path.splitext(filename)[0] + "_validation_summary.csv"
                 error_csv_path = os.path.join(EXPORTS_FOLDER, error_csv)
                 try:
+                    tb = traceback.format_exc()
                     with open(error_csv_path, "w", newline='') as f:
                         writer = csv.writer(f)
                         writer.writerow(["Error"])
                         writer.writerow([str(e)])
-                    progress_store[progress_key]['csv_filename'] = error_csv
+                        writer.writerow(["Traceback:"])
+                        for line in tb.splitlines():
+                            writer.writerow([line])
+                    set_progress(progress_key, percent=100, csv_filename=error_csv, done=True)
                 except Exception as file_error:
                     print(f"Error writing error CSV: {file_error}")
-                    progress_store[progress_key]['csv_filename'] = None
+                    set_progress(progress_key, percent=100, csv_filename=None, done=True)
                 print(f"Validation error: {e}")
-            finally:
-                progress_store[progress_key]['percent'] = 100
-                progress_store[progress_key]['done'] = True
-                print(f"Validation thread complete for {upload_path}")
 
-        # Run validation in a background thread, always passing the correct key
-        thread = threading.Thread(target=run_validation, args=(progress_key, upload_path, filename))
-        thread.start()
+        if rq_queue:
+            # Enqueue the validation job to Redis queue
+            try:
+                job = rq_queue.enqueue('app.validate_file', upload_path, progress_key, progress_key)
+                print('Enqueued job', job.id)
+            except Exception as e:
+                print('Failed to enqueue job, falling back to thread:', e)
+                thread = threading.Thread(target=run_validation_local, args=(progress_key, upload_path, filename))
+                thread.start()
+        else:
+            # Run locally in background thread
+            thread = threading.Thread(target=run_validation_local, args=(progress_key, upload_path, filename))
+            thread.start()
 
         return jsonify({'progressKey': progress_key})
     return jsonify({'error': 'Invalid file type'}), 400
 
 @app.route('/api/progress/<progress_key>', methods=['GET'])
 def get_progress(progress_key):
-    prog = progress_store.get(progress_key)
-    print(f"Progress check for key {progress_key}: {prog}")
+    prog = get_progress_data(progress_key)
+    logger.info('Progress check for key %s: %s', progress_key, prog)
     if not prog:
         return jsonify({'percent': 0, 'done': False, 'csv_filename': None, 'error': 'Progress key not found'}), 404
+
+    # If S3 is configured and csv_filename is present, return presigned URL
+    s3_bucket = os.environ.get('S3_BUCKET')
+    if s3_bucket and prog.get('csv_filename'):
+        s3_prefix = os.environ.get('S3_PREFIX', '')
+        key = os.path.join(s3_prefix, prog.get('csv_filename')) if s3_prefix else prog.get('csv_filename')
+        url = presigned_url(s3_bucket, key)
+        return jsonify({
+            'percent': prog.get('percent', 0),
+            'done': prog.get('done', False),
+            'csv_filename': prog.get('csv_filename'),
+            'download_url': url
+        })
+
     return jsonify({
         'percent': prog.get('percent', 0),
         'done': prog.get('done', False),
@@ -432,12 +583,36 @@ def get_progress(progress_key):
 
 @app.route('/download/<csv_filename>', methods=['GET'])
 def download_csv(csv_filename):
+    # If S3 is configured, return presigned URL; otherwise serve from exports folder
+    s3_bucket = os.environ.get('S3_BUCKET')
+    s3_prefix = os.environ.get('S3_PREFIX', '')
+    if s3_bucket:
+        key = os.path.join(s3_prefix, csv_filename) if s3_prefix else csv_filename
+        url = presigned_url(s3_bucket, key)
+        if url:
+            return jsonify({'url': url})
+        else:
+            return "File not available", 404
     try:
-        print(f"Download requested for {csv_filename}")
+        logger.info('Download requested for %s', csv_filename)
         return send_from_directory(app.config['EXPORTS_FOLDER'], csv_filename, as_attachment=True)
     except FileNotFoundError:
-        print(f"File not found for download: {csv_filename}")
+        logger.warning('File not found for download: %s', csv_filename)
         return "File not found", 404
+
+
+@app.route('/api/diagnostics', methods=['GET'])
+def diagnostics():
+    info = {
+        'python': sys.version.splitlines()[0],
+        'platform': platform.platform(),
+        'tesseract': getattr(pytesseract.pytesseract, 'tesseract_cmd', None),
+        'redis': bool(REDIS_URL),
+        's3_bucket': os.environ.get('S3_BUCKET'),
+        'memory_mb': psutil.virtual_memory().total // (1024 * 1024),
+        'disk_free_mb': shutil.disk_usage(BASE_DIR).free // (1024 * 1024)
+    }
+    return jsonify(info)
 
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 3000))

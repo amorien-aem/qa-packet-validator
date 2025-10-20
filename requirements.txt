@@ -8,3 +8,7 @@ Pillow
 Werkzeug
 gunicorn
 pytest
+redis
+rq
+boto3
+psutil

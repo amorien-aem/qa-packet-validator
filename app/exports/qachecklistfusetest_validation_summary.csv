@@ -1,24 +1,24 @@
 Page,Field,Result,Output
-1,Customer Name,Found,P.O. # Item #
-1,Customer P.O. Number,Found,is correct in all applicable paperwork. Checked
+1,Customer Name,Found,on labels is correct. Checked 2.
+1,Customer P.O. Number,Found,is correct in all applicable paperwork. Checked 3.
 1,Customer Part Number,Found,is correct in ail applicable paperwork. Checked
 1,Customer Part Number Revision,Missing,
 1,AEM Part Number,Found,is correct in all applicable paperwork. Checked
 1,AEM Lot Number,Found,is correct in all applicable paperwork. Checked
 1,AEM Date Code,Found,is correct in all applicable paperwork Checked
-1,AEM Cage Code,Found,is provided in C of C. Checked
-1,Customer Quality Clauses,Found,are met. Checked
+1,AEM Cage Code,Found,"is provided in C of C. Checked 8. Assurance level is identified and followed. Checked 9. Source inspection requirement is met. Checked 10. ‘If required, CD is provided. Checked 44. Other requirements of"
+1,Customer Quality Clauses,Found,"are met. Checked 412. If required, X-ray film is provided. Checked 43. FAt (Form 3) is completed. Checked 14."
 1,FAI Form 3,Missing,
 1,Solderability Test Report,Missing,
-1,DPA,Found,is completed. Checked
+1,DPA,Found,is completed. Checked 45. Final DCR verification is completed. Checked 16. |
 1,Visual Inspection Record,Missing,
-1,Shipment Quantity,Found,is correct. Checked
+1,Shipment Quantity,Found,is correct. Checked 417. Reel and package labels are correct. Checked 48. C of C statement meets customer requirement. Checked Note:
 1,Reel Labels,Missing,
 1,Certificate of Conformance,Missing,
 1,Route Sheet,Missing,
-1,Part Number,Found,is correct in ail applicable paperwork. Checked
-1,Lot Number,Found,is correct in all applicable paperwork. Checked
-1,Date,Found,code is correct in all applicable paperwork Checked
+1,Part Number,Found,is correct in all applicable paperwork. Checked 5.
+1,Lot Number,Found,is correct in all applicable paperwork. Checked 6.
+1,Date,Found,Checked by ____ P70841-4 Rev. B ECN 2181
 1,Resistance,Missing,
 1,Dimension,Missing,
 1,Test Result,Missing,

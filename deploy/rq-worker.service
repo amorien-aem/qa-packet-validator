@@ -1,0 +1,17 @@
+[Unit]
+Description=RQ Worker - QA-packet-validator
+After=network.target
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/opt/qa-packet-validator
+Environment=REDIS_URL=redis://:password@redis-host:6379/0
+ExecStart=/opt/qa-packet-validator/.venv/bin/rq worker -u $REDIS_URL default
+Restart=always
+RestartSec=5
+LimitNOFILE=4096
+
+[Install]
+WantedBy=multi-user.target
