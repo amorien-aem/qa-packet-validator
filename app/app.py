@@ -503,10 +503,12 @@ def index():
     2. Click <b>Upload and Validate</b>.<br>
     3. Wait for both progress bars to reach 100%.<br>
     4. When validation is complete, click the <b>Download CSV</b> link.</p>
-    <form id="upload-form" method="post" action="/api/validate" enctype="multipart/form-data">
-      <input type="file" name="file" id="file-input">
-      <input type="submit" value="Upload and Validate">
-    </form>
+        <!-- Prevent default HTML form POST (which causes a full-page redirect to /api/validate).
+                 We use a button + AJAX to ensure the page never navigates away. -->
+        <form id="upload-form" method="post" enctype="multipart/form-data">
+            <input type="file" name="file" id="file-input">
+            <button id="upload-btn" type="button">Upload and Validate</button>
+        </form>
     <div style="margin-top:20px;">
       <div>Upload Progress: <span id="upload-percent">0%</span></div>
       <div id="upload-progress-bar" style="width: 100%; background: #eee; height: 20px;">
@@ -576,30 +578,41 @@ def index():
                 document.getElementById('csv-preview').style.display = 'none';
             });
 
-            document.getElementById('upload-form').onsubmit = async function(e) {
-      e.preventDefault();
+                        document.getElementById('upload-btn').addEventListener('click', async function(e) {
+            // Prevent default navigation and perform AJAX upload
+            e.preventDefault();
       const formData = new FormData(this);
-      let uploadProgressBar = document.getElementById('upload-progress');
+            // If user clicked the button, the file input is in the form element rather than on the button
+            const formEl = document.getElementById('upload-form');
+            const fileInput = document.getElementById('file-input');
+            const fd = new FormData();
+            if (fileInput && fileInput.files && fileInput.files.length) {
+                    fd.append('file', fileInput.files[0]);
+            } else {
+                    showToast('No file selected', 3000);
+                    return;
+            }
+            let uploadProgressBar = document.getElementById('upload-progress');
       let uploadPercentText = document.getElementById('upload-percent');
       let progressBar = document.getElementById('progress');
       let progressPercentText = document.getElementById('progress-percent');
-      uploadProgressBar.style.width = '0%';
-      uploadPercentText.innerText = '0%';
-      progressBar.style.width = '0%';
-      progressPercentText.innerText = '0%';
-      document.getElementById('download-link').innerHTML = '';
+            uploadProgressBar.style.width = '0%';
+            uploadPercentText.innerText = '0%';
+            progressBar.style.width = '0%';
+            progressPercentText.innerText = '0%';
+            document.getElementById('download-link').innerHTML = '';
 
-      // AJAX upload with progress
-      const xhr = new XMLHttpRequest();
-      xhr.open('POST', '/api/validate', true);
+            // AJAX upload with progress
+            const xhr = new XMLHttpRequest();
+            xhr.open('POST', '/api/validate', true);
 
-      xhr.upload.onprogress = function(e) {
-        if (e.lengthComputable) {
-          let percent = Math.round((e.loaded / e.total) * 100);
-          uploadProgressBar.style.width = percent + '%';
-          uploadPercentText.innerText = percent + '%';
-        }
-      };
+            xhr.upload.onprogress = function(e) {
+                if (e.lengthComputable) {
+                    let percent = Math.round((e.loaded / e.total) * 100);
+                    uploadProgressBar.style.width = percent + '%';
+                    uploadPercentText.innerText = percent + '%';
+                }
+            };
 
             xhr.onreadystatechange = async function() {
                 if (xhr.readyState === XMLHttpRequest.DONE) {
