@@ -287,9 +287,10 @@ def validate_pdf(pdf_path, export_dir, progress_key=None, result_key=None):
                 anomalies.append([page_num + 1, field, f"Out of range: {fields[field]}"])
                 critical_issues.append([page_num + 1, field, fields[field]])
 
-        # Update progress
+        # Update progress (map loop progress to 0-99 to avoid signalling completion prematurely)
         if progress_key:
-            set_progress(progress_key, percent=int(((page_num + 1) / total_pages) * 100))
+            loop_percent = int(((page_num + 1) / total_pages) * 99)
+            set_progress(progress_key, percent=loop_percent)
         # Log progress at a coarse level
         if (page_num + 1) % 10 == 0 or page_num == total_pages - 1:
             logger.info('Processed page %s/%s for %s', page_num + 1, total_pages, base_name)
@@ -369,9 +370,9 @@ def validate_pdf(pdf_path, export_dir, progress_key=None, result_key=None):
         field_info_key = upload_to_s3(field_info_csv, s3_bucket, s3_prefix)
         if progress_key and result_key:
             # store the object key as csv_filename so the API can return a presigned URL
-            set_progress(progress_key, percent=100, csv_filename=os.path.basename(csv_key) if csv_key else None, done=True)
+            final_name = os.path.basename(csv_key) if csv_key else None
+            set_progress(progress_key, percent=100, csv_filename=final_name, done=True)
     else:
-        # Save result in progress store for robust retrieval
         if progress_key and result_key:
             set_progress(progress_key, percent=100, csv_filename=os.path.basename(csv_path), done=True)
 

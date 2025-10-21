@@ -1,0 +1,23 @@
+nohup: ignoring input
+INFO:qa-validator:Tesseract found: /usr/bin/tesseract (tesseract 5.5.0)
+ * Serving Flask app 'app'
+ * Debug mode: off
+INFO:werkzeug:[31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:3000
+ * Running on http://10.0.4.191:3000
+INFO:werkzeug:[33mPress CTRL+C to quit[0m
+INFO:werkzeug:127.0.0.1 - - [21/Oct/2025 00:01:44] "GET / HTTP/1.1" 200 -
+INFO:werkzeug:127.0.0.1 - - [21/Oct/2025 00:01:51] "POST /api/validate HTTP/1.1" 200 -
+INFO:qa-validator:Progress check for key a6a3bf7d-df3c-438f-a831-90309ac78cc7: {'percent': 0, 'done': False, 'csv_filename': None}
+INFO:werkzeug:127.0.0.1 - - [21/Oct/2025 00:01:51] "GET /api/progress/a6a3bf7d-df3c-438f-a831-90309ac78cc7 HTTP/1.1" 200 -
+INFO:qa-validator:Progress check for key a6a3bf7d-df3c-438f-a831-90309ac78cc7: {'percent': 0, 'done': False, 'csv_filename': None}
+INFO:werkzeug:127.0.0.1 - - [21/Oct/2025 00:01:53] "GET /api/progress/a6a3bf7d-df3c-438f-a831-90309ac78cc7 HTTP/1.1" 200 -
+INFO:qa-validator:Progress check for key a6a3bf7d-df3c-438f-a831-90309ac78cc7: {'percent': 0, 'done': False, 'csv_filename': None}
+INFO:werkzeug:127.0.0.1 - - [21/Oct/2025 00:01:54] "GET /api/progress/a6a3bf7d-df3c-438f-a831-90309ac78cc7 HTTP/1.1" 200 -
+INFO:qa-validator:Processed page 1/1 for qachecklistfusetest.pdf
+INFO:qa-validator:Validation complete. CSV saved at /workspaces/qa-packet-validator/app/exports/qachecklistfusetest.pdf_validation_summary.csv
+INFO:qa-validator:Progress check for key a6a3bf7d-df3c-438f-a831-90309ac78cc7: {'percent': 100, 'done': True, 'csv_filename': 'qachecklistfusetest.pdf_validation_summary.csv'}
+INFO:werkzeug:127.0.0.1 - - [21/Oct/2025 00:01:55] "GET /api/progress/a6a3bf7d-df3c-438f-a831-90309ac78cc7 HTTP/1.1" 200 -
+INFO:qa-validator:Download requested for qachecklistfusetest.pdf_validation_summary.csv
+INFO:werkzeug:127.0.0.1 - - [21/Oct/2025 00:01:57] "GET /download/qachecklistfusetest.pdf_validation_summary.csv HTTP/1.1" 200 -

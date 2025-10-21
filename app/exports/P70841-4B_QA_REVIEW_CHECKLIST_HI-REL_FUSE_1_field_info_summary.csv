@@ -1,0 +1,24 @@
+Field,Status,Output
+Customer Name,Found,on labels is correct. Checked 2.
+Customer P.O. Number,Found,is correct in all applicable paperwork. Checked 3.
+Customer Part Number,Found,is correct in ail applicable paperwork. Checked
+Customer Part Number Revision,Not found,Not found
+AEM Part Number,Found,is correct in all applicable paperwork. Checked
+AEM Lot Number,Found,is correct in all applicable paperwork. Checked
+AEM Date Code,Found,is correct in all applicable paperwork Checked
+AEM Cage Code,Found,"is provided in C of C. Checked 8. Assurance level is identified and followed. Checked 9. Source inspection requirement is met. Checked 10. ‘If required, CD is provided. Checked 44. Other requirements of"
+Customer Quality Clauses,Found,"are met. Checked 412. If required, X-ray film is provided. Checked 43. FAt (Form 3) is completed. Checked 14."
+FAI Form 3,Not found,Not found
+Solderability Test Report,Not found,Not found
+DPA,Found,is completed. Checked 45. Final DCR verification is completed. Checked 16. |
+Visual Inspection Record,Not found,Not found
+Shipment Quantity,Found,is correct. Checked 417. Reel and package labels are correct. Checked 48. C of C statement meets customer requirement. Checked Note:
+Reel Labels,Not found,Not found
+Certificate of Conformance,Not found,Not found
+Route Sheet,Not found,Not found
+Part Number,Found,is correct in all applicable paperwork. Checked 5.
+Lot Number,Found,is correct in all applicable paperwork. Checked 6.
+Date,Found,Checked by ____ P70841-4 Rev. B ECN 2181
+Resistance,Not found,Not found
+Dimension,Not found,Not found
+Test Result,Not found,Not found
