@@ -1,6 +1,8 @@
 from flask import session
 import threading
 import time
+import json
+import tempfile
 
 # In-memory progress store (for demo; use Redis or DB for production)
 progress_store = {}
@@ -40,6 +42,8 @@ except Exception:
 
 # Use absolute paths for directories to avoid issues in cloud environments
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
+PROGRESS_DIR = os.path.join(BASE_DIR, 'progress')
+os.makedirs(PROGRESS_DIR, exist_ok=True)
 UPLOAD_FOLDER = os.path.join(BASE_DIR, 'uploads')
 EXPORTS_FOLDER = os.path.join(BASE_DIR, 'exports')
 ALLOWED_EXTENSIONS = {'pdf', 'csv', 'xlsx'}
@@ -70,7 +74,7 @@ if REDIS_URL:
 
 
 def set_progress(progress_key, percent=None, csv_filename=None, done=None):
-    """Set progress in Redis if configured, otherwise in the in-memory store."""
+    """Set progress in Redis if configured, otherwise write atomic JSON file (visible to all workers)."""
     if redis_conn:
         data = {}
         if percent is not None:
@@ -82,6 +86,7 @@ def set_progress(progress_key, percent=None, csv_filename=None, done=None):
         if data:
             redis_conn.hset(progress_key, mapping={k: str(v) for k, v in data.items()})
     else:
+        # update in-memory for quick access and also persist to disk for cross-process visibility
         with progress_store_lock:
             prog = progress_store.get(progress_key)
             if not prog:
@@ -93,16 +98,30 @@ def set_progress(progress_key, percent=None, csv_filename=None, done=None):
                 prog['csv_filename'] = csv_filename
             if done is not None:
                 prog['done'] = bool(done)
-
+            # persist atomically
+            path = os.path.join(PROGRESS_DIR, f"{progress_key}.json")
+            tmpfd, tmppath = tempfile.mkstemp(dir=PROGRESS_DIR)
+            try:
+                with os.fdopen(tmpfd, 'w') as t:
+                    json.dump(prog, t)
+                    t.flush()
+                    os.fsync(t.fileno())
+                os.replace(tmppath, path)
+            except Exception:
+                logger.exception('Failed to write progress file for key %s', progress_key)
+                try:
+                    if os.path.exists(tmppath):
+                        os.remove(tmppath)
+                except Exception:
+                    pass
 
 def get_progress_data(progress_key):
-    """Retrieve progress dict from Redis or memory-alike structure."""
+    """Retrieve progress dict from Redis or from on-disk JSON fallback, otherwise in-memory."""
     if redis_conn:
         try:
             h = redis_conn.hgetall(progress_key)
             if not h:
                 return {'percent': 0, 'done': False, 'csv_filename': None}
-            # decode bytes to str
             decoded = {k.decode() if isinstance(k, bytes) else k: v.decode() if isinstance(v, bytes) else v for k, v in h.items()}
             return {
                 'percent': int(decoded.get('percent', 0)),
@@ -113,6 +132,19 @@ def get_progress_data(progress_key):
             logger.exception('Error reading progress from Redis for key %s', progress_key)
             return {'percent': 0, 'done': False, 'csv_filename': None}
     else:
+        # Prefer the on-disk JSON (cross-process); fall back to in-memory
+        path = os.path.join(PROGRESS_DIR, f"{progress_key}.json")
+        try:
+            if os.path.exists(path):
+                with open(path, 'r') as f:
+                    data = json.load(f)
+                    return {
+                        'percent': int(data.get('percent', 0)),
+                        'done': bool(data.get('done', False)),
+                        'csv_filename': data.get('csv_filename')
+                    }
+        except Exception:
+            logger.exception('Failed to read progress file for key %s', progress_key)
         with progress_store_lock:
             return progress_store.get(progress_key, {'percent': 0, 'done': False, 'csv_filename': None})
 
