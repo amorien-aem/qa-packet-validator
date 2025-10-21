@@ -424,10 +424,8 @@ def validate_file(filepath, progress_key=None, result_key=None):
         csv_filename = os.path.splitext(os.path.basename(filepath))[0] + '.csv'
         csv_path = os.path.join(EXPORTS_FOLDER, csv_filename)
         df.to_csv(csv_path, index=False)
-        if progress_key and result_key:
-            progress_store[progress_key]['percent'] = 100
-            progress_store[progress_key]['csv_filename'] = csv_filename
-            progress_store[progress_key]['done'] = True
+        if progress_key:
+            set_progress(progress_key, percent=100, csv_filename=csv_filename, done=True)
         print(f"validate_file: Non-PDF CSV generated at {csv_path}")
         return df, csv_filename
 
