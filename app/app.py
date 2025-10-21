@@ -399,12 +399,12 @@ def validate_pdf(pdf_path, export_dir, progress_key=None, result_key=None):
         csv_key = upload_to_s3(csv_path, s3_bucket, s3_prefix)
         dash_key = upload_to_s3(dashboard_path, s3_bucket, s3_prefix)
         field_info_key = upload_to_s3(field_info_csv, s3_bucket, s3_prefix)
-        if progress_key and result_key:
+        if progress_key:
             # store the object key as csv_filename so the API can return a presigned URL
             set_progress(progress_key, percent=100, csv_filename=os.path.basename(csv_key) if csv_key else None, done=True)
     else:
         # Save result in progress store for robust retrieval
-        if progress_key and result_key:
+        if progress_key:
             set_progress(progress_key, percent=100, csv_filename=os.path.basename(csv_path), done=True)
 
     logger.info('Validation complete. CSV saved at %s', csv_path)
@@ -550,7 +550,6 @@ def api_validate():
                 print(f"Starting validation for {upload_path}")
                 csv_path, excel_path, dashboard_path, anomaly_count, critical_count = validate_pdf(upload_path, EXPORTS_FOLDER, progress_key, progress_key)
                 csv_filename = os.path.basename(csv_path)
-                set_progress(progress_key, percent=100, csv_filename=csv_filename, done=True)
                 print(f"Validation finished for {upload_path}, CSV: {csv_filename}")
             except Exception as e:
                 error_csv = os.path.splitext(filename)[0] + "_validation_summary.csv"
