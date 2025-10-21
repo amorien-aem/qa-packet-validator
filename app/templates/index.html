@@ -38,10 +38,10 @@ document.querySelector('form').onsubmit = async function(e) {
 				percent = prog.percent;
 				progressBar.value = percent;
 				progressPercent.innerText = percent + '%';
-				if (percent >= 100) {
+				if (percent >= 100 && prog.csv_filename) {
 					clearInterval(pollInterval);
 					document.getElementById('download-link').innerHTML =
-						`<a href="/download/${formData.get('file').name.replace(/\.[^.]+$/, '.csv')}" download>Download CSV</a>`;
+						`<a href="/download/${prog.csv_filename}" download>Download CSV</a>`;
 					document.getElementById('progress-container').style.display = 'none';
 				}
 			}, 1000);
