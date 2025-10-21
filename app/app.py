@@ -400,8 +400,13 @@ def validate_pdf(pdf_path, export_dir, progress_key=None, result_key=None):
         dash_key = upload_to_s3(dashboard_path, s3_bucket, s3_prefix)
         field_info_key = upload_to_s3(field_info_csv, s3_bucket, s3_prefix)
         if progress_key:
-            # store the object key as csv_filename so the API can return a presigned URL
-            set_progress(progress_key, percent=100, csv_filename=os.path.basename(csv_key) if csv_key else None, done=True)
+            if csv_key:
+                # S3 upload succeeded, use S3 key as filename
+                set_progress(progress_key, percent=100, csv_filename=os.path.basename(csv_key), done=True)
+            else:
+                # S3 upload failed, fallback to local file serving
+                logger.warning('S3 upload failed, falling back to local file serving')
+                set_progress(progress_key, percent=100, csv_filename=os.path.basename(csv_path), done=True)
     else:
         # Save result in progress store for robust retrieval
         if progress_key:
