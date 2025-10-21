@@ -547,11 +547,12 @@ def api_validate():
 
         def run_validation_local(progress_key, upload_path, filename):
             try:
-                print(f"Starting validation for {upload_path}")
+                logger.info(f"Starting validation for {upload_path}")
                 csv_path, excel_path, dashboard_path, anomaly_count, critical_count = validate_pdf(upload_path, EXPORTS_FOLDER, progress_key, progress_key)
                 csv_filename = os.path.basename(csv_path)
-                print(f"Validation finished for {upload_path}, CSV: {csv_filename}")
+                logger.info(f"Validation finished for {upload_path}, CSV: {csv_filename}")
             except Exception as e:
+                logger.exception(f"Validation error for {upload_path}: {e}")
                 error_csv = os.path.splitext(filename)[0] + "_validation_summary.csv"
                 error_csv_path = os.path.join(EXPORTS_FOLDER, error_csv)
                 try:
@@ -564,10 +565,14 @@ def api_validate():
                         for line in tb.splitlines():
                             writer.writerow([line])
                     set_progress(progress_key, percent=100, csv_filename=error_csv, done=True)
+                    logger.info(f"Error CSV written: {error_csv_path}")
                 except Exception as file_error:
-                    print(f"Error writing error CSV: {file_error}")
+                    logger.exception(f"Error writing error CSV: {file_error}")
                     set_progress(progress_key, percent=100, csv_filename=None, done=True)
-                print(f"Validation error: {e}")
+            except:
+                # Catch any unexpected exceptions
+                logger.exception(f"Unexpected error during validation for {upload_path}")
+                set_progress(progress_key, percent=100, csv_filename=None, done=True)
 
         if rq_queue:
             # Enqueue the validation job to Redis queue
