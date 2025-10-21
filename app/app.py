@@ -396,23 +396,33 @@ def validate_pdf(pdf_path, export_dir, progress_key=None, result_key=None):
     s3_bucket = os.environ.get('S3_BUCKET')
     s3_prefix = os.environ.get('S3_PREFIX', '')
     if s3_bucket:
+        logger.info('S3 bucket configured: %s, attempting uploads', s3_bucket)
         csv_key = upload_to_s3(csv_path, s3_bucket, s3_prefix)
         dash_key = upload_to_s3(dashboard_path, s3_bucket, s3_prefix)
         field_info_key = upload_to_s3(field_info_csv, s3_bucket, s3_prefix)
+        logger.info('S3 uploads complete. CSV key: %s', csv_key)
         if progress_key:
             if csv_key:
                 # S3 upload succeeded, use S3 key as filename
+                logger.info('Setting progress with S3 key: %s', os.path.basename(csv_key))
                 set_progress(progress_key, percent=100, csv_filename=os.path.basename(csv_key), done=True)
             else:
                 # S3 upload failed, fallback to local file serving
                 logger.warning('S3 upload failed, falling back to local file serving')
                 set_progress(progress_key, percent=100, csv_filename=os.path.basename(csv_path), done=True)
+        else:
+            logger.warning('No progress_key provided for S3 path')
     else:
         # Save result in progress store for robust retrieval
+        logger.info('No S3 bucket configured, using local file serving')
         if progress_key:
+            logger.info('Setting progress with local filename: %s', os.path.basename(csv_path))
             set_progress(progress_key, percent=100, csv_filename=os.path.basename(csv_path), done=True)
+        else:
+            logger.warning('No progress_key provided for local path')
 
     logger.info('Validation complete. CSV saved at %s', csv_path)
+    logger.info('Progress key: %s, S3 bucket: %s', progress_key, s3_bucket)
     return csv_path, excel_path, dashboard_path, len(anomalies), len(critical_issues)
 
 def validate_file(filepath, progress_key=None, result_key=None):
@@ -550,7 +560,7 @@ def api_validate():
 
         def run_validation_local(progress_key, upload_path, filename):
             try:
-                logger.info(f"Starting validation for {upload_path}")
+                logger.info(f"Starting validation for {upload_path} with progress_key: {progress_key}")
                 csv_path, excel_path, dashboard_path, anomaly_count, critical_count = validate_pdf(upload_path, EXPORTS_FOLDER, progress_key, progress_key)
                 csv_filename = os.path.basename(csv_path)
                 logger.info(f"Validation finished for {upload_path}, CSV: {csv_filename}")
