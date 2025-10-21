@@ -31,6 +31,7 @@ import sys
 import psutil
 import boto3
 from botocore.exceptions import ClientError
+from urllib.parse import urlparse
 try:
     from redis import Redis
     from rq import Queue
@@ -52,9 +53,39 @@ app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 app.config['EXPORTS_FOLDER'] = EXPORTS_FOLDER
 app.config['MAX_CONTENT_LENGTH'] = int(os.environ.get('MAX_CONTENT_LENGTH', 10 * 1024 * 1024))  # 10MB default
 
-# Logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger('qa-validator')
+# Structured logging and optional Sentry
+SENTRY_DSN = os.environ.get('SENTRY_DSN')
+JSON_LOGS = os.environ.get('JSON_LOGS', '1') in ('1', 'true', 'True')
+
+# Try to initialize Sentry if DSN provided
+try:
+    if SENTRY_DSN:
+        import sentry_sdk
+
+        sentry_sdk.init(dsn=SENTRY_DSN, traces_sample_rate=float(os.environ.get('SENTRY_TRACES_SAMPLE_RATE', '0.0')))
+except Exception:
+    # don't fail startup just because Sentry isn't available
+    pass
+
+# Configure logging
+if JSON_LOGS:
+    try:
+        from pythonjsonlogger import jsonlogger
+
+        handler = logging.StreamHandler()
+        fmt = jsonlogger.JsonFormatter('%(asctime)s %(levelname)s %(name)s %(message)s')
+        handler.setFormatter(fmt)
+        logger = logging.getLogger('qa-validator')
+        logger.setLevel(os.environ.get('LOG_LEVEL', 'INFO'))
+        # Remove default handlers then add JSON handler
+        logging.root.handlers = []
+        logging.root.addHandler(handler)
+    except Exception:
+        logging.basicConfig(level=os.environ.get('LOG_LEVEL', 'INFO'))
+        logger = logging.getLogger('qa-validator')
+else:
+    logging.basicConfig(level=os.environ.get('LOG_LEVEL', 'INFO'))
+    logger = logging.getLogger('qa-validator')
 
 # Try to configure Redis if provided (Render/Production)
 REDIS_URL = os.environ.get('REDIS_URL')
@@ -68,9 +99,16 @@ if REDIS_URL:
     except Exception as e:
         logger.exception('Failed to connect to Redis: %s', e)
 
+# Progress key prefix and TTL (days)
+PROGRESS_KEY_PREFIX = os.environ.get('PROGRESS_KEY_PREFIX', 'qa-validator:progress:')
+_PROGRESS_TTL_DAYS = int(os.environ.get('PROGRESS_KEY_TTL_DAYS', '7'))
+PROGRESS_KEY_TTL_SECONDS = _PROGRESS_TTL_DAYS * 24 * 3600
+
 
 def set_progress(progress_key, percent=None, csv_filename=None, done=None):
     """Set progress in Redis if configured, otherwise in the in-memory store."""
+    # Use namespaced key internally to avoid collisions
+    namespaced_key = f"{PROGRESS_KEY_PREFIX}{progress_key}"
     if redis_conn:
         data = {}
         if percent is not None:
@@ -80,26 +118,44 @@ def set_progress(progress_key, percent=None, csv_filename=None, done=None):
         if done is not None:
             data['done'] = int(bool(done))
         if data:
-            redis_conn.hset(progress_key, mapping={k: str(v) for k, v in data.items()})
-    else:
-        with progress_store_lock:
-            prog = progress_store.get(progress_key)
-            if not prog:
-                prog = {'percent': 0, 'done': False, 'csv_filename': None}
-                progress_store[progress_key] = prog
-            if percent is not None:
-                prog['percent'] = int(percent)
-            if csv_filename is not None:
-                prog['csv_filename'] = csv_filename
-            if done is not None:
-                prog['done'] = bool(done)
+            attempts = 3
+            backoff_base = 0.25
+            for attempt in range(1, attempts + 1):
+                try:
+                    redis_conn.hset(namespaced_key, mapping={k: str(v) for k, v in data.items()})
+                    if done:
+                        try:
+                            redis_conn.expire(namespaced_key, PROGRESS_KEY_TTL_SECONDS)
+                        except Exception:
+                            logger.exception('Failed to set TTL on progress key %s', namespaced_key)
+                    return
+                except Exception:
+                    logger.exception('Attempt %s: Failed to write progress to Redis for key %s', attempt, progress_key)
+                    if attempt < attempts:
+                        time.sleep(backoff_base * (2 ** (attempt - 1)))
+                    else:
+                        logger.warning('All attempts failed; falling back to in-memory progress for key %s', progress_key)
+                        break
+    # Memory fallback if Redis not configured or all Redis attempts failed
+    with progress_store_lock:
+        prog = progress_store.get(progress_key)
+        if not prog:
+            prog = {'percent': 0, 'done': False, 'csv_filename': None}
+            progress_store[progress_key] = prog
+        if percent is not None:
+            prog['percent'] = int(percent)
+        if csv_filename is not None:
+            prog['csv_filename'] = csv_filename
+        if done is not None:
+            prog['done'] = bool(done)
 
 
 def get_progress_data(progress_key):
     """Retrieve progress dict from Redis or memory-alike structure."""
+    namespaced_key = f"{PROGRESS_KEY_PREFIX}{progress_key}"
     if redis_conn:
         try:
-            h = redis_conn.hgetall(progress_key)
+            h = redis_conn.hgetall(namespaced_key)
             if not h:
                 return {'percent': 0, 'done': False, 'csv_filename': None}
             # decode bytes to str
@@ -115,6 +171,27 @@ def get_progress_data(progress_key):
     else:
         with progress_store_lock:
             return progress_store.get(progress_key, {'percent': 0, 'done': False, 'csv_filename': None})
+
+
+@app.route('/api/redis_ping', methods=['GET'])
+def redis_ping():
+    """Return masked Redis host:port and whether a ping succeeds. Does not reveal credentials."""
+    if not REDIS_URL or not redis_conn:
+        return jsonify({'redis_configured': False, 'host': None, 'port': None, 'reachable': False})
+    try:
+        parsed = urlparse(REDIS_URL)
+        host = parsed.hostname
+        port = parsed.port
+    except Exception:
+        host = None
+        port = None
+    reachable = False
+    try:
+        reachable = bool(redis_conn.ping())
+    except Exception:
+        logger.exception('Redis ping failed')
+        reachable = False
+    return jsonify({'redis_configured': True, 'host': host, 'port': port, 'reachable': reachable})
 
 
 def upload_to_s3(local_path, bucket, key_prefix=''):
@@ -163,6 +240,17 @@ def extract_text_with_ocr(page):
     text = pytesseract.image_to_string(img)
     img.close()
     return text
+
+
+def clean_output(s: str) -> str:
+    """Sanitize and normalize extracted output for CSV readability."""
+    if s is None:
+        return ''
+    # Collapse multiple spaces, normalize whitespace and trim
+    out = re.sub(r"\s+", " ", str(s)).strip()
+    # Remove repeated 'Checked' markers or long runs
+    out = re.sub(r"(Checked\s*\d{0,3}\.?\s*){2,}", "Checked", out, flags=re.IGNORECASE)
+    return out[:4000]
 
 def validate_pdf(pdf_path, export_dir, progress_key=None, result_key=None):
     base_name = os.path.splitext(os.path.basename(pdf_path))[0]
@@ -385,8 +473,15 @@ def validate_file(filepath, progress_key=None, result_key=None):
         df = None
         csv_path, excel_path, dashboard_path, anomaly_count, critical_count = validate_pdf(filepath, EXPORTS_FOLDER, progress_key, result_key)
         df = pd.read_csv(csv_path)
+        csv_filename = os.path.basename(csv_path)
         print(f"validate_file: CSV generated at {csv_path}")
-        return df, os.path.basename(csv_path)
+        # Defensive: ensure progress finalized when called directly (validate_pdf should already set this)
+        if progress_key and result_key:
+            try:
+                set_progress(progress_key, percent=100, csv_filename=csv_filename, done=True)
+            except Exception:
+                logger.exception('Failed to set final progress in validate_file for key %s', progress_key)
+        return df, csv_filename
     else:
         data = {'filename': [os.path.basename(filepath)], 'status': ['validated']}
         df = pd.DataFrame(data)
@@ -394,9 +489,7 @@ def validate_file(filepath, progress_key=None, result_key=None):
         csv_path = os.path.join(EXPORTS_FOLDER, csv_filename)
         df.to_csv(csv_path, index=False)
         if progress_key and result_key:
-            progress_store[progress_key]['percent'] = 100
-            progress_store[progress_key]['csv_filename'] = csv_filename
-            progress_store[progress_key]['done'] = True
+            set_progress(progress_key, percent=100, csv_filename=csv_filename, done=True)
         print(f"validate_file: Non-PDF CSV generated at {csv_path}")
         return df, csv_filename
 
@@ -411,10 +504,12 @@ def index():
     2. Click <b>Upload and Validate</b>.<br>
     3. Wait for both progress bars to reach 100%.<br>
     4. When validation is complete, click the <b>Download CSV</b> link.</p>
-    <form id="upload-form" method="post" action="/api/validate" enctype="multipart/form-data">
-      <input type="file" name="file" id="file-input">
-      <input type="submit" value="Upload and Validate">
-    </form>
+        <!-- Prevent default HTML form POST (which causes a full-page redirect to /api/validate).
+                 We use a button + AJAX to ensure the page never navigates away. -->
+        <form id="upload-form" method="post" enctype="multipart/form-data">
+            <input type="file" name="file" id="file-input">
+            <button id="upload-btn" type="button">Upload and Validate</button>
+        </form>
     <div style="margin-top:20px;">
       <div>Upload Progress: <span id="upload-percent">0%</span></div>
       <div id="upload-progress-bar" style="width: 100%; background: #eee; height: 20px;">
@@ -427,72 +522,162 @@ def index():
         <div id="progress" style="background: #4caf50; width: 0%; height: 100%;"></div>
       </div>
     </div>
-    <div id="download-link" style="margin-top:20px;"></div>
-    <script>
-    document.getElementById('upload-form').onsubmit = async function(e) {
-      e.preventDefault();
+            <div id="download-link" style="margin-top:20px;"></div>
+            <div id="csv-preview" style="margin-top:12px; display:none; border:1px solid #ddd; padding:8px; background:#fafafa; max-width:900px;">
+                <div style="display:flex;justify-content:space-between;align-items:center;">
+                    <strong id="csv-preview-filename"></strong>
+                    <button id="csv-preview-close" style="background:#eee;border:1px solid #ccc;padding:4px 8px;border-radius:4px;">Close</button>
+                </div>
+                <pre id="csv-preview-content" style="max-height:320px;overflow:auto;white-space:pre-wrap;word-break:break-word;margin-top:8px;"></pre>
+            </div>
+            <div id="toast" style="position:fixed;right:20px;bottom:20px;min-width:200px;background:#323232;color:#fff;padding:12px;border-radius:6px;display:none;box-shadow:0 2px 10px rgba(0,0,0,0.3);z-index:1000;"></div>
+            <script>
+            function showToast(msg, timeout=4000) {
+                const t = document.getElementById('toast');
+                t.innerText = msg;
+                t.style.display = 'block';
+                t.style.opacity = '1';
+                setTimeout(() => {
+                    t.style.transition = 'opacity 0.5s';
+                    t.style.opacity = '0';
+                    setTimeout(()=> t.style.display = 'none', 500);
+                }, timeout);
+            }
+
+            async function showPreview(csvFilename) {
+                const previewDiv = document.getElementById('csv-preview');
+                const content = document.getElementById('csv-preview-content');
+                const name = document.getElementById('csv-preview-filename');
+                previewDiv.style.display = 'block';
+                name.innerText = csvFilename;
+                content.innerText = 'Loading preview...';
+                try {
+                    let res = await fetch(`/download/${encodeURIComponent(csvFilename)}`, { method: 'GET' });
+                    const ctype = res.headers.get('content-type') || '';
+                    let text;
+                    if (ctype.includes('application/json')) {
+                        const j = await res.json();
+                        if (j.url) {
+                            const r2 = await fetch(j.url);
+                            if (!r2.ok) throw new Error('Failed to fetch presigned URL: ' + r2.status);
+                            text = await r2.text();
+                        } else {
+                            text = JSON.stringify(j, null, 2);
+                        }
+                    } else {
+                        if (!res.ok) throw new Error('Failed to download CSV: ' + res.status);
+                        text = await res.text();
+                    }
+                    const lines = text.split(/\r?\n/).slice(0, 80);
+                    content.innerText = lines.join('\n');
+                } catch (err) {
+                    content.innerText = 'Preview failed: ' + String(err);
+                }
+            }
+
+            document.getElementById('csv-preview-close').addEventListener('click', function(){
+                document.getElementById('csv-preview').style.display = 'none';
+            });
+
+                        document.getElementById('upload-btn').addEventListener('click', async function(e) {
+            // Prevent default navigation and perform AJAX upload
+            e.preventDefault();
       const formData = new FormData(this);
-      let uploadProgressBar = document.getElementById('upload-progress');
+            // If user clicked the button, the file input is in the form element rather than on the button
+            const formEl = document.getElementById('upload-form');
+            const fileInput = document.getElementById('file-input');
+            const fd = new FormData();
+            if (fileInput && fileInput.files && fileInput.files.length) {
+                    fd.append('file', fileInput.files[0]);
+            } else {
+                    showToast('No file selected', 3000);
+                    return;
+            }
+            let uploadProgressBar = document.getElementById('upload-progress');
       let uploadPercentText = document.getElementById('upload-percent');
       let progressBar = document.getElementById('progress');
       let progressPercentText = document.getElementById('progress-percent');
-      uploadProgressBar.style.width = '0%';
-      uploadPercentText.innerText = '0%';
-      progressBar.style.width = '0%';
-      progressPercentText.innerText = '0%';
-      document.getElementById('download-link').innerHTML = '';
+            uploadProgressBar.style.width = '0%';
+            uploadPercentText.innerText = '0%';
+            progressBar.style.width = '0%';
+            progressPercentText.innerText = '0%';
+            document.getElementById('download-link').innerHTML = '';
 
-      // AJAX upload with progress
-      const xhr = new XMLHttpRequest();
-      xhr.open('POST', '/api/validate', true);
+            // AJAX upload with progress
+            const xhr = new XMLHttpRequest();
+            xhr.open('POST', '/api/validate', true);
 
-      xhr.upload.onprogress = function(e) {
-        if (e.lengthComputable) {
-          let percent = Math.round((e.loaded / e.total) * 100);
-          uploadProgressBar.style.width = percent + '%';
-          uploadPercentText.innerText = percent + '%';
-        }
-      };
+            xhr.upload.onprogress = function(e) {
+                if (e.lengthComputable) {
+                    let percent = Math.round((e.loaded / e.total) * 100);
+                    uploadProgressBar.style.width = percent + '%';
+                    uploadPercentText.innerText = percent + '%';
+                }
+            };
 
-      xhr.onreadystatechange = async function() {
-        if (xhr.readyState === XMLHttpRequest.DONE) {
-          if (xhr.status === 200) {
-            uploadProgressBar.style.width = '100%';
-            uploadPercentText.innerText = '100%';
-            const data = JSON.parse(xhr.responseText);
-            if (!data.progressKey) {
-              document.getElementById('download-link').innerText = 'Validation failed.';
-              return;
-            }
-            // Poll for validation progress
-            let percent = 0;
-            let csvFilename = '';
-            while (percent < 100) {
-              const progRes = await fetch(`/api/progress/${data.progressKey}`);
-              const progData = await progRes.json();
-              percent = progData.percent;
-              progressBar.style.width = percent + '%';
-              progressPercentText.innerText = percent + '%';
-              if (progData.done && progData.csv_filename) {
-                csvFilename = progData.csv_filename;
-                break;
-              }
-              await new Promise(r => setTimeout(r, 1000));
-            }
-            progressBar.style.width = '100%';
-            progressPercentText.innerText = '100%';
-            if (csvFilename) {
-              document.getElementById('download-link').innerHTML =
-                `<b>Validation complete! Click the link below to download your results:</b><br>
-                <a href="/download/${csvFilename}" download>Download CSV</a>`;
-            } else {
-              document.getElementById('download-link').innerText = 'Validation failed.';
-            }
-          } else {
-            document.getElementById('download-link').innerText = 'Upload failed.';
-          }
-        }
-      };
+            xhr.onreadystatechange = async function() {
+                if (xhr.readyState === XMLHttpRequest.DONE) {
+                    if (xhr.status === 200) {
+                        uploadProgressBar.style.width = '100%';
+                        uploadPercentText.innerText = '100%';
+                        const data = JSON.parse(xhr.responseText);
+                        // If server returned an immediate csv_filename (synchronous fallback when Redis absent), show download link
+                                    if (data.csv_filename) {
+                                        const csvFilename = data.csv_filename;
+                                        const downloadUrl = data.download_url ? data.download_url : `/download/${csvFilename}`;
+                                        progressBar.style.width = '100%';
+                                        progressPercentText.innerText = '100%';
+                                        document.getElementById('download-link').innerHTML =
+                                            `<b>Validation complete! Click the link below to download your results:</b><br>
+                                            <a href="${downloadUrl}" download>Download CSV</a> <button id="preview-btn" style="margin-left:8px;padding:4px 8px;border-radius:4px;border:1px solid #ccc;background:#f5f5f5;">Preview CSV</button>`;
+                                        setTimeout(()=>{
+                                            const btn = document.getElementById('preview-btn');
+                                            if (btn) btn.addEventListener('click', () => showPreview(csvFilename));
+                                        }, 10);
+                                        showToast('Validation complete — download is ready');
+                                        return;
+                                    }
+                        if (!data.progressKey) {
+                            document.getElementById('download-link').innerText = 'Validation failed.';
+                            showToast('Validation failed', 6000);
+                            return;
+                        }
+                        // Poll for validation progress
+                        let percent = 0;
+                        let csvFilename = '';
+                        while (percent < 100) {
+                            const progRes = await fetch(`/api/progress/${data.progressKey}`);
+                            const progData = await progRes.json();
+                            percent = progData.percent;
+                            progressBar.style.width = percent + '%';
+                            progressPercentText.innerText = percent + '%';
+                            if (progData.done && progData.csv_filename) {
+                                csvFilename = progData.csv_filename;
+                                break;
+                            }
+                            await new Promise(r => setTimeout(r, 1000));
+                        }
+                        progressBar.style.width = '100%';
+                        progressPercentText.innerText = '100%';
+                        if (csvFilename) {
+                            document.getElementById('download-link').innerHTML =
+                                `<b>Validation complete! Click the link below to download your results:</b><br>
+                                <a href="/download/${csvFilename}" download>Download CSV</a> <button id="preview-btn" style="margin-left:8px;padding:4px 8px;border-radius:4px;border:1px solid #ccc;background:#f5f5f5;">Preview CSV</button>`;
+                            setTimeout(()=>{
+                              const btn = document.getElementById('preview-btn');
+                              if (btn) btn.addEventListener('click', () => showPreview(csvFilename));
+                            }, 10);
+                            showToast('Validation complete — download is ready');
+                        } else {
+                            document.getElementById('download-link').innerText = 'Validation failed.';
+                            showToast('Validation failed', 6000);
+                        }
+                    } else {
+                        document.getElementById('download-link').innerText = 'Upload failed.';
+                        showToast('Upload failed', 6000);
+                    }
+                }
+            };
       xhr.send(formData);
     }
     </script>
@@ -513,13 +698,13 @@ def api_validate():
         # Generate a unique progress key
         progress_key = str(uuid.uuid4())
         set_progress(progress_key, percent=0, csv_filename=None, done=False)
-
         def run_validation_local(progress_key, upload_path, filename):
+            # Run validation but guarantee final progress write in a finally block
+            csv_filename = None
             try:
                 print(f"Starting validation for {upload_path}")
                 csv_path, excel_path, dashboard_path, anomaly_count, critical_count = validate_pdf(upload_path, EXPORTS_FOLDER, progress_key, progress_key)
                 csv_filename = os.path.basename(csv_path)
-                set_progress(progress_key, percent=100, csv_filename=csv_filename, done=True)
                 print(f"Validation finished for {upload_path}, CSV: {csv_filename}")
             except Exception as e:
                 error_csv = os.path.splitext(filename)[0] + "_validation_summary.csv"
@@ -533,14 +718,36 @@ def api_validate():
                         writer.writerow(["Traceback:"])
                         for line in tb.splitlines():
                             writer.writerow([line])
-                    set_progress(progress_key, percent=100, csv_filename=error_csv, done=True)
+                    csv_filename = error_csv
                 except Exception as file_error:
                     print(f"Error writing error CSV: {file_error}")
-                    set_progress(progress_key, percent=100, csv_filename=None, done=True)
+                    csv_filename = None
                 print(f"Validation error: {e}")
+            finally:
+                # Ensure the progress store is finalized so callers/pollers always see a completed state
+                if progress_key:
+                    try:
+                        set_progress(progress_key, percent=100, csv_filename=csv_filename, done=True)
+                    except Exception:
+                        logger.exception('Failed to finalize progress in run_validation_local for key %s', progress_key)
+        # If Redis is not configured, run synchronously and return immediate result
+        if not redis_conn:
+            try:
+                df, csv_filename = validate_file(upload_path, progress_key=progress_key, result_key=progress_key)
+                # Ensure we return the canonical progress state so callers/pollers see the final result
+                prog = get_progress_data(progress_key)
+                return jsonify({'progressKey': progress_key, 'csv_filename': csv_filename, 'progress': prog})
+            except Exception as e:
+                logger.exception('Synchronous validation failed for %s', upload_path)
+                # Finalize progress with an error state so pollers don't hang
+                try:
+                    set_progress(progress_key, percent=100, csv_filename=None, done=True)
+                except Exception:
+                    logger.exception('Failed to finalize progress after synchronous validation exception for key %s', progress_key)
+                return jsonify({'error': str(e), 'progressKey': progress_key}), 500
 
+        # Otherwise, try to enqueue the validation job to Redis queue
         if rq_queue:
-            # Enqueue the validation job to Redis queue
             try:
                 job = rq_queue.enqueue('app.validate_file', upload_path, progress_key, progress_key)
                 print('Enqueued job', job.id)
@@ -614,6 +821,99 @@ def diagnostics():
         'disk_free_mb': shutil.disk_usage(BASE_DIR).free // (1024 * 1024)
     }
     return jsonify(info)
+
+
+
+
+
+@app.route('/api/health', methods=['GET'])
+def health():
+    """Lightweight health check useful for load balancers and quick status checks.
+    Returns Redis reachability, queue length (if Redis/RQ available), and a simple ok flag.
+    """
+    ok = True
+    redis_status = {'configured': False, 'reachable': False, 'host': None, 'port': None}
+    queue_len = None
+    try:
+        if REDIS_URL and redis_conn:
+            redis_status['configured'] = True
+            parsed = urlparse(REDIS_URL)
+            redis_status['host'] = parsed.hostname
+            redis_status['port'] = parsed.port
+            try:
+                redis_status['reachable'] = bool(redis_conn.ping())
+            except Exception:
+                redis_status['reachable'] = False
+            # If rq is available, attempt to get queue length
+            if Queue and redis_conn:
+                try:
+                    q = Queue('default', connection=redis_conn)
+                    queue_len = q.count
+                except Exception:
+                    logger.exception('Failed to read RQ queue length')
+    except Exception:
+        logger.exception('Health check failed')
+        ok = False
+
+    return jsonify({
+        'ok': ok,
+        'redis': redis_status,
+        'queue_length': queue_len
+    })
+
+
+@app.route('/api/debug_job/<progress_key>', methods=['GET'])
+def debug_job(progress_key):
+    """Return detailed debug info for a job/progress key.
+    - reads progress store
+    - if csv_filename present, checks local exports folder for the file and returns file stat + head
+    - if S3 configured and csv present, returns a presigned URL check
+    This endpoint is intended for debugging and should be removed/revoked in production if not needed.
+    """
+    prog = get_progress_data(progress_key)
+    resp = {'progress': prog}
+
+    csv_filename = prog.get('csv_filename')
+    s3_bucket = os.environ.get('S3_BUCKET')
+
+    if csv_filename:
+        local_path = os.path.join(app.config['EXPORTS_FOLDER'], csv_filename)
+        resp['local_export'] = {'exists': False}
+        try:
+            if os.path.exists(local_path):
+                st = os.stat(local_path)
+                resp['local_export']['exists'] = True
+                resp['local_export']['size'] = st.st_size
+                # return first 2000 chars or 80 lines
+                head_lines = []
+                with open(local_path, 'r', encoding='utf-8', errors='replace') as f:
+                    for i, line in enumerate(f):
+                        if i >= 80:
+                            break
+                        head_lines.append(line.rstrip('\n'))
+                resp['local_export']['preview_lines'] = head_lines
+        except Exception as e:
+            resp['local_export']['error'] = str(e)
+
+        # If S3 configured, generate a presigned URL (masked) and test GET
+        if s3_bucket:
+            s3_prefix = os.environ.get('S3_PREFIX', '')
+            key = os.path.join(s3_prefix, csv_filename) if s3_prefix else csv_filename
+            url = presigned_url(s3_bucket, key)
+            resp['s3'] = {'presigned_url': bool(url)}
+            # Optionally test fetch (server-side) but don't include content
+            if url:
+                try:
+                    import requests
+
+                    r = requests.get(url, timeout=15)
+                    resp['s3']['status_code'] = r.status_code
+                except Exception as e:
+                    resp['s3']['fetch_error'] = str(e)
+    else:
+        resp['note'] = 'No csv_filename present in progress entry.'
+
+    return jsonify(resp)
 
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 3000))

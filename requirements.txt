@@ -12,3 +12,6 @@ redis
 rq
 boto3
 psutil
+sentry-sdk
+python-json-logger
+requests

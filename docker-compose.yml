@@ -1,0 +1,66 @@
+version: '3.8'
+
+services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 2s
+      retries: 5
+
+  localstack:
+    image: localstack/localstack:latest
+    environment:
+      - SERVICES=s3
+      - DEBUG=1
+      - DATA_DIR=/tmp/localstack/data
+    ports:
+      - "4566:4566"
+      - "4572:4572"
+    volumes:
+      - ./compose/localstack:/tmp/localstack
+
+  web:
+    build: .
+    command: gunicorn app.app:app -w 2 -k gthread -b 0.0.0.0:3000
+    ports:
+      - "3000:3000"
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - S3_BUCKET=qa-validator-test
+      - AWS_ACCESS_KEY_ID=test
+      - AWS_SECRET_ACCESS_KEY=test
+      - AWS_REGION=us-east-1
+      - PROGRESS_KEY_PREFIX=qa-validator:progress:
+      - PROGRESS_KEY_TTL_DAYS=7
+    depends_on:
+      redis:
+        condition: service_healthy
+      localstack:
+        condition: service_started
+    volumes:
+      - ./:/app
+
+  worker:
+    build: .
+    command: bash -lc "rq worker -u $REDIS_URL default"
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - AWS_ACCESS_KEY_ID=test
+      - AWS_SECRET_ACCESS_KEY=test
+      - AWS_REGION=us-east-1
+      - S3_BUCKET=qa-validator-test
+      - PROGRESS_KEY_PREFIX=qa-validator:progress:
+      - PROGRESS_KEY_TTL_DAYS=7
+    depends_on:
+      - redis
+      - localstack
+    volumes:
+      - ./:/app
+
+networks:
+  default:
+    name: qa-validator-net
