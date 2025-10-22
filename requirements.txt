@@ -12,3 +12,4 @@ redis
 rq
 boto3
 psutil
+reportlab

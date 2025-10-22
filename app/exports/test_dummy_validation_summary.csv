@@ -1,0 +1,24 @@
+Error
+Failed to open file '/workspaces/qa-packet-validator/app/uploads/test_dummy.pdf'.
+Traceback:
+Traceback (most recent call last):
+"  File ""/workspaces/qa-packet-validator/.venv/lib/python3.11/site-packages/pymupdf/__init__.py"", line 2986, in __init__"
+    doc = mupdf.fz_open_document(filename)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+"  File ""/workspaces/qa-packet-validator/.venv/lib/python3.11/site-packages/pymupdf/mupdf.py"", line 48462, in fz_open_document"
+    return _mupdf.fz_open_document(filename)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+pymupdf.mupdf.FzErrorFormat: code=7: no objects found
+""
+The above exception was the direct cause of the following exception:
+""
+Traceback (most recent call last):
+"  File ""/workspaces/qa-packet-validator/app/app.py"", line 601, in run_validation_local"
+"    csv_path, excel_path, dashboard_path, anomaly_count, critical_count = validate_pdf(upload_path, EXPORTS_FOLDER, progress_key, progress_key)"
+                                                                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+"  File ""/workspaces/qa-packet-validator/app/app.py"", line 302, in validate_pdf"
+    doc = fitz.open(pdf_path)
+          ^^^^^^^^^^^^^^^^^^^
+"  File ""/workspaces/qa-packet-validator/.venv/lib/python3.11/site-packages/pymupdf/__init__.py"", line 2989, in __init__"
+    raise FileDataError(f'Failed to open file {filename!r}.') from e
+pymupdf.FileDataError: Failed to open file '/workspaces/qa-packet-validator/app/uploads/test_dummy.pdf'.

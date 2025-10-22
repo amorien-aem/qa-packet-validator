@@ -11,18 +11,13 @@ progress_store_lock = threading.Lock()
 import os
 from flask import Flask, request, send_from_directory, jsonify, render_template_string
 from werkzeug.utils import secure_filename
-import pandas as pd
-import fitz  # PyMuPDF
 import csv
 import re
-import matplotlib.pyplot as plt
 from collections import defaultdict
-from openpyxl import Workbook
-from openpyxl.styles import Font
-from openpyxl.worksheet.table import Table, TableStyleInfo
-import pytesseract
-from PIL import Image
-import io
+import io as _io
+# Heavy libraries (pandas, PyMuPDF, pytesseract, matplotlib, openpyxl, Pillow)
+# are imported lazily inside the functions that need them to reduce startup
+# memory and CPU usage on constrained hosts.
 import uuid
 import shutil
 import traceback
@@ -54,7 +49,8 @@ os.makedirs(EXPORTS_FOLDER, exist_ok=True)
 app = Flask(__name__)
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 app.config['EXPORTS_FOLDER'] = EXPORTS_FOLDER
-app.config['MAX_CONTENT_LENGTH'] = int(os.environ.get('MAX_CONTENT_LENGTH', 10 * 1024 * 1024))  # 10MB default
+# Default to a smaller upload limit for low-performance free hosts (5MB)
+app.config['MAX_CONTENT_LENGTH'] = int(os.environ.get('MAX_CONTENT_LENGTH', 5 * 1024 * 1024))  # 5MB default
 
 # Logging
 logging.basicConfig(level=logging.INFO)
@@ -73,8 +69,16 @@ if REDIS_URL:
         logger.exception('Failed to connect to Redis: %s', e)
 
 
-def set_progress(progress_key, percent=None, csv_filename=None, done=None):
-    """Set progress in Redis if configured, otherwise write atomic JSON file (visible to all workers)."""
+def set_progress(progress_key, percent=None, csv_filename=None, done=None, error=None):
+    """Set progress in Redis if configured, otherwise write atomic JSON file (visible to all workers).
+
+    Parameters:
+    - progress_key: str
+    - percent: int
+    - csv_filename: str
+    - done: bool
+    - error: dict or None (e.g. {'code':'PARSE_ERROR','message':'short message'})
+    """
     if redis_conn:
         data = {}
         if percent is not None:
@@ -83,8 +87,24 @@ def set_progress(progress_key, percent=None, csv_filename=None, done=None):
             data['csv_filename'] = csv_filename
         if done is not None:
             data['done'] = int(bool(done))
+        if error is not None:
+            # store structured error as JSON string
+            try:
+                data['error'] = json.dumps(error)
+            except Exception:
+                data['error'] = json.dumps({'message': str(error)})
         if data:
-            redis_conn.hset(progress_key, mapping={k: str(v) for k, v in data.items()})
+            try:
+                # Use a pipeline to ensure atomic execution when available
+                pipe = redis_conn.pipeline()
+                pipe.hset(progress_key, mapping={k: str(v) for k, v in data.items()})
+                pipe.execute()
+            except Exception:
+                # Fallback to single hset
+                try:
+                    redis_conn.hset(progress_key, mapping={k: str(v) for k, v in data.items()})
+                except Exception:
+                    logger.exception('Failed to write progress to Redis for key %s', progress_key)
     else:
         # update in-memory for quick access and also persist to disk for cross-process visibility
         with progress_store_lock:
@@ -98,6 +118,8 @@ def set_progress(progress_key, percent=None, csv_filename=None, done=None):
                 prog['csv_filename'] = csv_filename
             if done is not None:
                 prog['done'] = bool(done)
+            if error is not None:
+                prog['error'] = error
             # persist atomically
             path = os.path.join(PROGRESS_DIR, f"{progress_key}.json")
             tmpfd, tmppath = tempfile.mkstemp(dir=PROGRESS_DIR)
@@ -123,10 +145,18 @@ def get_progress_data(progress_key):
             if not h:
                 return {'percent': 0, 'done': False, 'csv_filename': None}
             decoded = {k.decode() if isinstance(k, bytes) else k: v.decode() if isinstance(v, bytes) else v for k, v in h.items()}
+            err = decoded.get('error')
+            parsed_err = None
+            if err:
+                try:
+                    parsed_err = json.loads(err)
+                except Exception:
+                    parsed_err = {'message': err}
             return {
                 'percent': int(decoded.get('percent', 0)),
                 'done': bool(int(decoded.get('done', 0))) if decoded.get('done') is not None else False,
-                'csv_filename': decoded.get('csv_filename')
+                'csv_filename': decoded.get('csv_filename'),
+                'error': parsed_err
             }
         except Exception:
             logger.exception('Error reading progress from Redis for key %s', progress_key)
@@ -141,12 +171,17 @@ def get_progress_data(progress_key):
                     return {
                         'percent': int(data.get('percent', 0)),
                         'done': bool(data.get('done', False)),
-                        'csv_filename': data.get('csv_filename')
+                        'csv_filename': data.get('csv_filename'),
+                        'error': data.get('error')
                     }
         except Exception:
             logger.exception('Failed to read progress file for key %s', progress_key)
         with progress_store_lock:
-            return progress_store.get(progress_key, {'percent': 0, 'done': False, 'csv_filename': None})
+            p = progress_store.get(progress_key, {'percent': 0, 'done': False, 'csv_filename': None, 'error': None})
+            # ensure keys exist
+            if 'error' not in p:
+                p['error'] = None
+            return p
 
 
 def upload_to_s3(local_path, bucket, key_prefix=''):
@@ -170,11 +205,10 @@ def presigned_url(bucket, key, expires=3600):
         logger.exception('Presigned URL generation failed: %s', e)
         return None
 
-# Ensure pytesseract knows the tesseract binary location in deployed environments
+# Detect tesseract binary location; actual pytesseract import/use is lazy inside OCR code
 tess_path = shutil.which('tesseract')
 if tess_path:
     try:
-        pytesseract.pytesseract.tesseract_cmd = tess_path
         ver = subprocess.check_output([tess_path, '--version'], stderr=subprocess.STDOUT, text=True).splitlines()[0]
         logger.info("Tesseract found: %s (%s)", tess_path, ver)
     except Exception as e:
@@ -185,15 +219,33 @@ else:
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
+
+def sanitize_csv_filename(filename):
+    """Sanitize a filename to be safe for local storage/URLs and ensure it ends with .csv."""
+    if not filename:
+        return None
+    safe = secure_filename(filename)
+    base, _ = os.path.splitext(safe)
+    return base + '.csv'
+
 def extract_text_with_ocr(page):
+    # `page` is a PyMuPDF page object. Try direct extraction first and fall back to OCR.
     text = page.get_text()
     if text.strip():
         return text
-    # Fallback to OCR if no text found
+    # Lazy-import heavy OCR deps only when needed
+    try:
+        from PIL import Image
+        import pytesseract
+    except Exception:
+        logger.warning('OCR dependencies not available; returning empty text')
+        return ''
     pix = page.get_pixmap(dpi=150)
-    img = Image.open(io.BytesIO(pix.tobytes("png")))
-    text = pytesseract.image_to_string(img)
-    img.close()
+    img = Image.open(_io.BytesIO(pix.tobytes("png")))
+    try:
+        text = pytesseract.image_to_string(img)
+    finally:
+        img.close()
     return text
 
 def validate_pdf(pdf_path, export_dir, progress_key=None, result_key=None):
@@ -225,6 +277,14 @@ def validate_pdf(pdf_path, export_dir, progress_key=None, result_key=None):
     all_fields = []
     field_page_map = defaultdict(list)  # field -> list of page numbers
     field_value_map = defaultdict(list)  # field -> list of (page, value)
+    # Segment settings: process PDFs in chunks to minimize memory peak for very large PDFs
+    try:
+        segment_size = int(os.environ.get('PAGE_SEGMENT_SIZE', '4'))
+        if segment_size <= 0:
+            segment_size = 4
+    except Exception:
+        segment_size = 4
+    segment_files = []
 
     def extract_fields(text):
         """Extract fields by locating field label positions and taking the text up to the next label.
@@ -289,8 +349,26 @@ def validate_pdf(pdf_path, export_dir, progress_key=None, result_key=None):
         values = [fields.get(field_name) for fields in all_fields if field_name in fields]
         return len(set(values)) == 1
 
+    # Lazy-import heavy libraries used for PDF processing and reporting
+    try:
+        import fitz  # PyMuPDF
+        from PIL import Image
+        import pytesseract
+        import pandas as pd
+        import matplotlib.pyplot as plt
+        from openpyxl import Workbook
+        from openpyxl.styles import Font
+        from openpyxl.worksheet.table import Table, TableStyleInfo
+    except Exception as e:
+        logger.exception('Missing optional heavy dependency: %s', e)
+        # re-raise so caller handles the error and produces an error CSV
+        raise
+
     doc = fitz.open(pdf_path)
     total_pages = len(doc)
+    # buffer for current segment rows (list of (page, field, status, output))
+    segment_rows = []
+    segment_index = 0
     for page_num in range(total_pages):
         page = doc.load_page(page_num)
         # Try to extract text directly; only use OCR if text is empty
@@ -298,7 +376,7 @@ def validate_pdf(pdf_path, export_dir, progress_key=None, result_key=None):
         if not text.strip():
             # Only do OCR if absolutely necessary
             pix = page.get_pixmap(dpi=150)
-            img = Image.open(io.BytesIO(pix.tobytes("png")))
+            img = Image.open(_io.BytesIO(pix.tobytes("png")))
             try:
                 text = pytesseract.image_to_string(img)
             finally:
@@ -319,8 +397,31 @@ def validate_pdf(pdf_path, export_dir, progress_key=None, result_key=None):
                 anomalies.append([page_num + 1, field, f"Out of range: {fields[field]}"])
                 critical_issues.append([page_num + 1, field, fields[field]])
 
-        # Update progress
-        if progress_key:
+        # Prepare rows for this page into the current segment buffer
+        for field in REQUIRED_FIELDS:
+            if field in fields:
+                segment_rows.append((page_num + 1, field, 'Found', fields[field]))
+            else:
+                segment_rows.append((page_num + 1, field, 'Missing', ''))
+
+        # If segment boundary reached or last page, flush segment to disk
+        if ((page_num + 1) % segment_size == 0) or (page_num == total_pages - 1):
+            seg_path = os.path.join(export_dir, f"{base_name}_segment_{segment_index}_validation_summary.csv")
+            try:
+                with open(seg_path, 'w', newline='') as sf:
+                    writer = csv.writer(sf)
+                    writer.writerow(["Page", "Field", "Result", "Output"])
+                    for r in segment_rows:
+                        writer.writerow(r)
+                segment_files.append(seg_path)
+            except Exception:
+                logger.exception('Failed to write segment CSV: %s', seg_path)
+            # clear buffer for next segment
+            segment_rows = []
+            segment_index += 1
+
+        # Update progress - but don't set 100% here to avoid race condition
+        if progress_key and page_num + 1 < total_pages:
             set_progress(progress_key, percent=int(((page_num + 1) / total_pages) * 100))
         # Log progress at a coarse level
         if (page_num + 1) % 10 == 0 or page_num == total_pages - 1:
@@ -331,18 +432,28 @@ def validate_pdf(pdf_path, export_dir, progress_key=None, result_key=None):
             anomalies.append(["All Pages", field, "Inconsistent values"])
             critical_issues.append(["All Pages", field, "Inconsistent values"])
 
-    # Write all required fields for every page: Page, Field, Result ('Found' or 'Missing'), Output (value or blank)
-    with open(csv_path, "w", newline='') as f:
-        writer = csv.writer(f)
-        writer.writerow(["Page", "Field", "Result", "Output"])
-        for page_num in range(1, total_pages + 1):
-            # Extract fields for this page
-            fields = all_fields[page_num - 1]
-            for field in REQUIRED_FIELDS:
-                if field in fields:
-                    writer.writerow([page_num, field, "Found", fields[field]])
-                else:
-                    writer.writerow([page_num, field, "Missing", ""])
+    # Merge segment CSVs into the final summary (preserve order)
+    try:
+        with open(csv_path, 'w', newline='') as out_f:
+            writer = csv.writer(out_f)
+            writer.writerow(["Page", "Field", "Result", "Output"])
+            for seg in sorted(segment_files, key=lambda s: int(re.search(r"_segment_(\d+)_", os.path.basename(s)).group(1)) if re.search(r"_segment_(\d+)_", os.path.basename(s)) else 0):
+                try:
+                    with open(seg, 'r', newline='') as sf:
+                        r = csv.reader(sf)
+                        header = next(r, None)
+                        for row in r:
+                            writer.writerow(row)
+                except Exception:
+                    logger.exception('Failed to merge segment file: %s', seg)
+        # Optionally remove segment files after merge
+        for seg in segment_files:
+            try:
+                os.remove(seg)
+            except Exception:
+                pass
+    except Exception:
+        logger.exception('Failed to write final merged CSV: %s', csv_path)
 
     # Write summary: all required fields, 'Found' if present, and all extracted values (concatenated)
     field_info_csv = os.path.join(export_dir, f"{base_name}_field_info_summary.csv")
@@ -403,21 +514,24 @@ def validate_pdf(pdf_path, export_dir, progress_key=None, result_key=None):
         logger.info('S3 uploads complete. CSV key: %s', csv_key)
         if progress_key:
             if csv_key:
-                # S3 upload succeeded, use S3 key as filename
-                logger.info('Setting progress with S3 key: %s', os.path.basename(csv_key))
-                set_progress(progress_key, percent=100, csv_filename=os.path.basename(csv_key), done=True)
+                # S3 upload succeeded, use S3 key as filename (sanitize basename)
+                csvfn = sanitize_csv_filename(os.path.basename(csv_key))
+                logger.info('Setting progress with S3 key: %s', csvfn)
+                set_progress(progress_key, percent=100, csv_filename=csvfn, done=True)
             else:
                 # S3 upload failed, fallback to local file serving
+                csvfn = sanitize_csv_filename(os.path.basename(csv_path))
                 logger.warning('S3 upload failed, falling back to local file serving')
-                set_progress(progress_key, percent=100, csv_filename=os.path.basename(csv_path), done=True)
+                set_progress(progress_key, percent=100, csv_filename=csvfn, done=True)
         else:
             logger.warning('No progress_key provided for S3 path')
     else:
         # Save result in progress store for robust retrieval
         logger.info('No S3 bucket configured, using local file serving')
         if progress_key:
-            logger.info('Setting progress with local filename: %s', os.path.basename(csv_path))
-            set_progress(progress_key, percent=100, csv_filename=os.path.basename(csv_path), done=True)
+            csvfn = sanitize_csv_filename(os.path.basename(csv_path))
+            logger.info('Setting progress with local filename: %s', csvfn)
+            set_progress(progress_key, percent=100, csv_filename=csvfn, done=True)
         else:
             logger.warning('No progress_key provided for local path')
 
@@ -428,19 +542,23 @@ def validate_pdf(pdf_path, export_dir, progress_key=None, result_key=None):
 def validate_file(filepath, progress_key=None, result_key=None):
     # If PDF, run PDF validation, else fallback to dummy
     if filepath.lower().endswith('.pdf'):
-        df = None
+        # Run full PDF validation
         csv_path, excel_path, dashboard_path, anomaly_count, critical_count = validate_pdf(filepath, EXPORTS_FOLDER, progress_key, result_key)
+        # Lazy-import pandas only when needed
+        import pandas as pd
         df = pd.read_csv(csv_path)
         print(f"validate_file: CSV generated at {csv_path}")
         return df, os.path.basename(csv_path)
     else:
+        # Non-PDF fallback
+        import pandas as pd
         data = {'filename': [os.path.basename(filepath)], 'status': ['validated']}
         df = pd.DataFrame(data)
         csv_filename = os.path.splitext(os.path.basename(filepath))[0] + '.csv'
         csv_path = os.path.join(EXPORTS_FOLDER, csv_filename)
         df.to_csv(csv_path, index=False)
         if progress_key:
-            set_progress(progress_key, percent=100, csv_filename=csv_filename, done=True)
+            set_progress(progress_key, percent=100, csv_filename=sanitize_csv_filename(csv_filename), done=True)
         print(f"validate_file: Non-PDF CSV generated at {csv_path}")
         return df, csv_filename
 
@@ -455,10 +573,13 @@ def index():
     2. Click <b>Upload and Validate</b>.<br>
     3. Wait for both progress bars to reach 100%.<br>
     4. When validation is complete, click the <b>Download CSV</b> link.</p>
-    <form id="upload-form" method="post" action="/api/validate" enctype="multipart/form-data">
-      <input type="file" name="file" id="file-input">
-      <input type="submit" value="Upload and Validate">
-    </form>
+        <form id="upload-form" method="post" enctype="multipart/form-data" onsubmit="return false;">
+            <input type="file" name="file" id="file-input">
+            <button id="upload-button" type="button">Upload and Validate</button>
+            <noscript>
+                <p style="color: red;">JavaScript is required for in-page progress. With no JavaScript, the form will perform a full-page POST which is not recommended. Please enable JavaScript.</p>
+            </noscript>
+        </form>
     <div style="margin-top:20px;">
       <div>Upload Progress: <span id="upload-percent">0%</span></div>
       <div id="upload-progress-bar" style="width: 100%; background: #eee; height: 20px;">
@@ -472,74 +593,108 @@ def index():
       </div>
     </div>
     <div id="download-link" style="margin-top:20px;"></div>
-    <script>
-    document.getElementById('upload-form').onsubmit = async function(e) {
-      e.preventDefault();
-      const formData = new FormData(this);
-      let uploadProgressBar = document.getElementById('upload-progress');
-      let uploadPercentText = document.getElementById('upload-percent');
-      let progressBar = document.getElementById('progress');
-      let progressPercentText = document.getElementById('progress-percent');
-      uploadProgressBar.style.width = '0%';
-      uploadPercentText.innerText = '0%';
-      progressBar.style.width = '0%';
-      progressPercentText.innerText = '0%';
-      document.getElementById('download-link').innerHTML = '';
-
-      // AJAX upload with progress
-      const xhr = new XMLHttpRequest();
-      xhr.open('POST', '/api/validate', true);
-
-      xhr.upload.onprogress = function(e) {
-        if (e.lengthComputable) {
-          let percent = Math.round((e.loaded / e.total) * 100);
-          uploadProgressBar.style.width = percent + '%';
-          uploadPercentText.innerText = percent + '%';
-        }
-      };
-
-      xhr.onreadystatechange = async function() {
-        if (xhr.readyState === XMLHttpRequest.DONE) {
-          if (xhr.status === 200) {
-            uploadProgressBar.style.width = '100%';
-            uploadPercentText.innerText = '100%';
-            const data = JSON.parse(xhr.responseText);
-            if (!data.progressKey) {
-              document.getElementById('download-link').innerText = 'Validation failed.';
-              return;
+        <script>
+        // Ensure the JS handler is attached; if it fails, the form will not submit and user will see an error.
+        (function() {
+            const form = document.getElementById('upload-form');
+            const uploadButton = document.getElementById('upload-button');
+            if (!form || !uploadButton) {
+                console.error('Upload form or button not found; upload handler cannot be attached.');
+                return;
             }
-            // Poll for validation progress
-            let percent = 0;
-            let csvFilename = '';
-            while (percent < 100) {
-              const progRes = await fetch(`/api/progress/${data.progressKey}`);
-              const progData = await progRes.json();
-              percent = progData.percent;
-              progressBar.style.width = percent + '%';
-              progressPercentText.innerText = percent + '%';
-              if (progData.done && progData.csv_filename) {
-                csvFilename = progData.csv_filename;
-                break;
-              }
-              await new Promise(r => setTimeout(r, 1000));
+
+            async function startUpload() {
+                const e = { preventDefault: () => {} };
+                // reuse the same logic as before
+                const formData = new FormData(form);
+                let uploadProgressBar = document.getElementById('upload-progress');
+                let uploadPercentText = document.getElementById('upload-percent');
+                let progressBar = document.getElementById('progress');
+                let progressPercentText = document.getElementById('progress-percent');
+                uploadProgressBar.style.width = '0%';
+                uploadPercentText.innerText = '0%';
+                progressBar.style.width = '0%';
+                progressPercentText.innerText = '0%';
+                document.getElementById('download-link').innerHTML = '';
+
+                // AJAX upload with progress
+                const xhr = new XMLHttpRequest();
+                xhr.open('POST', '/api/validate', true);
+
+                xhr.upload.onprogress = function(e) {
+                    if (e.lengthComputable) {
+                        let percent = Math.round((e.loaded / e.total) * 100);
+                        uploadProgressBar.style.width = percent + '%';
+                        uploadPercentText.innerText = percent + '%';
+                    }
+                };
+
+                xhr.onreadystatechange = async function() {
+                    if (xhr.readyState === XMLHttpRequest.DONE) {
+                        if (xhr.status === 200) {
+                            uploadProgressBar.style.width = '100%';
+                            uploadPercentText.innerText = '100%';
+                            const data = JSON.parse(xhr.responseText);
+                            if (!data.progressKey) {
+                                document.getElementById('download-link').innerText = 'Validation failed.';
+                                return;
+                            }
+                            // Poll for validation progress
+                            let percent = 0;
+                            let csvFilename = '';
+                                            while (percent < 100) {
+                                                const progRes = await fetch(`/api/progress/${data.progressKey}`);
+                                                const progData = await progRes.json();
+                                                percent = progData.percent;
+                                                progressBar.style.width = percent + '%';
+                                                progressPercentText.innerText = percent + '%';
+                                                if (progData.done) {
+                                                    if (progData.error) {
+                                                        // Display user-friendly message if available
+                                                        const code = progData.error.code || '';
+                                                        const msg = progData.error.message || progData.error;
+                                                        document.getElementById('download-link').innerHTML = `<div style="color: red;"><b>Error</b> ${code}: ${msg}</div>`;
+                                                        csvFilename = '';
+                                                        break;
+                                                    }
+                                                    if (progData.csv_filename) {
+                                                        csvFilename = progData.csv_filename;
+                                                        break;
+                                                    }
+                                                }
+                                                await new Promise(r => setTimeout(r, 1000));
+                                            }
+                            progressBar.style.width = '100%';
+                            progressPercentText.innerText = '100%';
+                                        if (csvFilename) {
+                                                document.getElementById('download-link').innerHTML =
+                                                    `<b>Validation complete! Click the link below to download your results:</b><br>
+                                                    <a href="/download/${csvFilename}" download>Download CSV</a>`;
+                                        } else {
+                                                // If no csvFilename it's either an error already rendered or a failure
+                                                if (!document.getElementById('download-link').innerHTML) {
+                                                        document.getElementById('download-link').innerText = 'Validation failed.';
+                                                }
+                                        }
+                        } else {
+                            document.getElementById('download-link').innerText = 'Upload failed.';
+                        }
+                    }
+                };
+                xhr.send(formData);
             }
-            progressBar.style.width = '100%';
-            progressPercentText.innerText = '100%';
-            if (csvFilename) {
-              document.getElementById('download-link').innerHTML =
-                `<b>Validation complete! Click the link below to download your results:</b><br>
-                <a href="/download/${csvFilename}" download>Download CSV</a>`;
-            } else {
-              document.getElementById('download-link').innerText = 'Validation failed.';
-            }
-          } else {
-            document.getElementById('download-link').innerText = 'Upload failed.';
-          }
-        }
-      };
-      xhr.send(formData);
-    }
-    </script>
+
+            // Attach click handler and provide a simple error if the handler is missing later
+            uploadButton.addEventListener('click', function() {
+                try {
+                    startUpload();
+                } catch (err) {
+                    console.error('Upload handler error:', err);
+                    document.getElementById('download-link').innerText = 'Upload handler failed. See console.';
+                }
+            });
+        })();
+        </script>
     ''')
 
 @app.route('/api/validate', methods=['POST'])
@@ -577,15 +732,15 @@ def api_validate():
                         writer.writerow(["Traceback:"])
                         for line in tb.splitlines():
                             writer.writerow([line])
-                    set_progress(progress_key, percent=100, csv_filename=error_csv, done=True)
+                    set_progress(progress_key, percent=100, csv_filename=sanitize_csv_filename(error_csv), done=True, error={'message': str(e)})
                     logger.info(f"Error CSV written: {error_csv_path}")
                 except Exception as file_error:
                     logger.exception(f"Error writing error CSV: {file_error}")
-                    set_progress(progress_key, percent=100, csv_filename=None, done=True)
+                    set_progress(progress_key, percent=100, csv_filename=None, done=True, error={'message': str(file_error)})
             except:
                 # Catch any unexpected exceptions
                 logger.exception(f"Unexpected error during validation for {upload_path}")
-                set_progress(progress_key, percent=100, csv_filename=None, done=True)
+                set_progress(progress_key, percent=100, csv_filename=None, done=True, error={'message': 'Unexpected error occurred'})
 
         if rq_queue:
             # Enqueue the validation job to Redis queue
@@ -610,6 +765,33 @@ def get_progress(progress_key):
     logger.info('Progress check for key %s: %s', progress_key, prog)
     if not prog:
         return jsonify({'percent': 0, 'done': False, 'csv_filename': None, 'error': 'Progress key not found'}), 404
+    # If percent is 100 but 'done' is not set, attempt a safe auto-fix.
+    # This addresses cases where a worker/process updated percent and csv_filename
+    # but failed to persist the final 'done' flag (for example due to a cross-process
+    # file-write or permission issue). If the CSV file exists locally (or a filename
+    # is present when S3 is configured) we mark the progress as done and persist it.
+    try:
+        if prog.get('percent', 0) >= 100 and not prog.get('done'):
+            csvfn = prog.get('csv_filename')
+            s3_bucket = os.environ.get('S3_BUCKET')
+            file_exists = False
+            if csvfn:
+                if s3_bucket:
+                    # assume S3 upload completed if a filename exists; the presigned URL
+                    # generation will still validate availability.
+                    file_exists = True
+                else:
+                    local_path = os.path.join(EXPORTS_FOLDER, csvfn)
+                    if os.path.exists(local_path):
+                        file_exists = True
+            # If we detect the CSV is available, persist done=True so clients stop polling.
+            if file_exists:
+                logger.info('Auto-marking progress done for key %s since percent>=100 and file exists', progress_key)
+                set_progress(progress_key, percent=prog.get('percent', 100), csv_filename=csvfn, done=True)
+                # refresh prog from the authoritative source
+                prog = get_progress_data(progress_key)
+    except Exception:
+        logger.exception('Error while attempting to auto-mark progress done for key %s', progress_key)
 
     # If S3 is configured and csv_filename is present, return presigned URL
     s3_bucket = os.environ.get('S3_BUCKET')
@@ -621,13 +803,15 @@ def get_progress(progress_key):
             'percent': prog.get('percent', 0),
             'done': prog.get('done', False),
             'csv_filename': prog.get('csv_filename'),
-            'download_url': url
+            'download_url': url,
+            'error': prog.get('error')
         })
 
     return jsonify({
         'percent': prog.get('percent', 0),
         'done': prog.get('done', False),
         'csv_filename': prog.get('csv_filename')
+        , 'error': prog.get('error')
     })
 
 @app.route('/download/<csv_filename>', methods=['GET'])
@@ -655,13 +839,44 @@ def diagnostics():
     info = {
         'python': sys.version.splitlines()[0],
         'platform': platform.platform(),
-        'tesseract': getattr(pytesseract.pytesseract, 'tesseract_cmd', None),
+        'tesseract': tess_path,
         'redis': bool(REDIS_URL),
         's3_bucket': os.environ.get('S3_BUCKET'),
         'memory_mb': psutil.virtual_memory().total // (1024 * 1024),
         'disk_free_mb': shutil.disk_usage(BASE_DIR).free // (1024 * 1024)
     }
     return jsonify(info)
+
+
+@app.route('/nojs-validate', methods=['GET', 'POST'])
+def nojs_validate():
+    # Simple fallback for users without JavaScript: render a page with a basic upload form
+    if request.method == 'GET':
+        return '''
+        <h2>Upload (no-JS fallback)</h2>
+        <form method="post" enctype="multipart/form-data">
+          <input type="file" name="file">
+          <input type="submit" value="Upload and validate">
+        </form>
+        '''
+    # POST handling: reuse the existing API behavior but present an HTML response
+    if 'file' not in request.files:
+        return '<p>No file uploaded</p>', 400
+    file = request.files['file']
+    if file.filename == '' or not allowed_file(file.filename):
+        return '<p>Invalid file</p>', 400
+    filename = secure_filename(file.filename)
+    upload_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+    file.save(upload_path)
+    progress_key = str(uuid.uuid4())
+    set_progress(progress_key, percent=0, csv_filename=None, done=False)
+    # Run validation synchronously for no-JS users (short blocking)
+    try:
+        csv_path, _, _, _, _ = validate_pdf(upload_path, EXPORTS_FOLDER, progress_key, progress_key)
+        csvfn = sanitize_csv_filename(os.path.basename(csv_path))
+        return f'<p>Validation complete. <a href="/download/{csvfn}">Download CSV</a></p>'
+    except Exception as e:
+        return f'<p>Validation failed: {str(e)}</p>', 500
 
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 3000))

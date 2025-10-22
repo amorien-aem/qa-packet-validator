@@ -1,89 +1,112 @@
 # QA Packet Validator - AI Development Guide
 
 ## Project Overview
-This is a Flask web app that validates QA packet PDFs for compliance with required fields, numerical ranges, and data consistency. It extracts text from PDFs using PyMuPDF with OCR fallback (Tesseract), generates CSV/Excel reports, and provides progress tracking.
+Flask web app that validates QA packet PDFs for compliance with required fields, numerical ranges, and data consistency. Extracts text from PDFs using PyMuPDF with OCR fallback (Tesseract), generates CSV/Excel reports, and provides real-time progress tracking.
 
-## Architecture
+## Architecture & Data Flow
 
 ### Core Components
-- **`app/app.py`**: Main Flask app with all routes and validation logic (~650 lines)
-- **`app/worker.py`**: Redis Queue (RQ) worker setup for background processing  
-- **`validator.py`**: Legacy stub - actual validation is in `app.py`
-- **`app/templates/index.html`**: Single-page UI with async progress tracking
+- **`app/app.py`**: Monolithic Flask app (~880 lines) - all routes, validation logic, progress tracking
+- **`app/worker.py`**: Redis Queue (RQ) worker stub for background processing
+- **`app/templates/index.html`**: Single-page UI with AJAX upload and progress polling
+- **`validator.py`**: Legacy stub - actual validation in `app.py`
 
-### Data Flow
-1. Upload PDF → `/api/validate` endpoint
-2. Generate unique progress key, store file in `app/uploads/`
-3. Either sync validation OR Redis queue job (if `REDIS_URL` set)
-4. Extract fields from PDF pages using text + OCR fallback
-5. Validate against `REQUIRED_FIELDS` list and `NUMERICAL_RANGES`
-6. Generate 3 CSV outputs in `app/exports/`: validation summary, field info, field pages
-7. Upload to S3 (if configured) or serve locally via `/download/<filename>`
+### Request Flow
+1. **Upload**: PDF → `/api/validate` → save to `app/uploads/` → return `progressKey`
+2. **Processing**: Sync validation OR Redis queue job (if `REDIS_URL` set)
+3. **Extraction**: Page segmentation → text extraction → OCR fallback → field parsing  
+4. **Validation**: Against 22 `REQUIRED_FIELDS` + `NUMERICAL_RANGES` (Resistance: 95-105, Dimension: 0.9-1.1)
+5. **Output**: 3 CSV files in `app/exports/` (validation summary, field info, field pages)
+6. **Delivery**: S3 upload (if configured) OR local `/download/<filename>` endpoint
 
-### Progress Tracking
-- **In-memory**: `progress_store` dict with threading locks
-- **Persistent**: JSON files in `app/progress/` for cross-process visibility
-- **Production**: Redis hash storage when `REDIS_URL` configured
-- Client polls `/api/progress/<key>` every 1000ms
+### Progress Architecture
+Three-tier fallback system:
+- **Redis**: Production hash storage with `hset/hget` operations
+- **JSON files**: Cross-process persistence in `app/progress/` directory
+- **In-memory**: Thread-safe dict with locks as final fallback
+- **Client**: 1000ms polling of `/api/progress/<key>` endpoint
 
-## Key Patterns
+## Critical Implementation Patterns
 
-### PDF Field Extraction
-The validation logic uses a sophisticated positional extraction approach in `extract_fields()`:
-1. Find all field label positions in lowercased text
-2. Extract value between current label and next label position
-3. Fallback to regex patterns if positional fails
-4. Handle multi-line values and missing colons
+### PDF Field Extraction Strategy
+`extract_fields()` uses positional parsing, not just regex:
+```python
+# 1. Find all field labels in lowercased text  
+# 2. Sort by position, extract text between consecutive labels
+# 3. Fallback to pre-compiled regex patterns if positional fails
+# 4. Handle multi-line values and missing colons
+```
 
-### Environment-Aware Deployment
-- **Local**: In-memory progress, local file serving
-- **Production**: Redis queues, S3 storage, presigned URLs
-- Uses `REDIS_URL`, `S3_BUCKET`, `S3_PREFIX` env vars for feature toggling
+### Environment-Driven Features
+- **Local dev**: `python app/app.py` → port 3000, in-memory progress, local files
+- **Production**: Gunicorn + Redis workers + S3 storage + presigned URLs
+- **Feature detection**: `REDIS_URL`, `S3_BUCKET`, `S3_PREFIX` env vars enable optional services
 
-### File Organization
-- `app/uploads/`: Temporary uploaded files
-- `app/exports/`: Generated CSV/Excel/PNG outputs  
-- `app/progress/`: JSON progress files for cross-process sync
+### Lazy Import Pattern
+Heavy dependencies (pandas, PyMuPDF, matplotlib) imported inside functions to reduce startup memory:
+```python
+def validate_pdf():
+    import pandas as pd  # Only import when actually validating
+```
 
 ## Development Workflows
 
-### Local Testing
+### Local Development
 ```bash
-python app/app.py  # Starts on port 3000
-pytest tests/     # Basic route and function tests
+python app/app.py                    # Dev server on :3000
+pytest tests/                       # Minimal test suite
+rq worker -u redis://localhost:6379/0  # Background worker (optional)
 ```
 
-### Worker Mode (with Redis)
-```bash
-rq worker -u redis://localhost:6379/0
+### Deployment Patterns
+- **Render.com**: `render.yaml` → Docker build with Tesseract OCR
+- **Heroku**: `Procfile` → Gunicorn web process  
+- **SystemD**: `deploy/rq-worker.service` for production workers
+
+### File System Layout
+```
+app/uploads/    # Temporary PDF uploads (user files)
+app/exports/    # Generated CSV/Excel/PNG outputs  
+app/progress/   # JSON progress files for worker visibility
 ```
 
-### Required Dependencies
-- **Tesseract OCR**: `apt-get install tesseract-ocr` (auto-detected on PATH)
-- **Python**: pandas, PyMuPDF, pytesseract, Flask, openpyxl, matplotlib
-- **Optional**: redis, rq, boto3 for production features
+## Critical Configuration
 
-## Critical Implementation Details
+### Validation Constants (Hardcoded)
+```python
+REQUIRED_FIELDS = [
+    "Customer Name", "Customer P.O. Number", "Customer Part Number",
+    "Customer Part Number Revision", "AEM Part Number", "AEM Lot Number",
+    # ... 22 total fields in specific order
+]
+NUMERICAL_RANGES = {
+    "Resistance": (95, 105),    # Percentage bounds
+    "Dimension": (0.9, 1.1)     # Tolerance bounds  
+}
+```
 
-### Validation Constants
-- `REQUIRED_FIELDS`: 22 hardcoded field names in specific order
-- `NUMERICAL_RANGES`: Resistance (95-105), Dimension (0.9-1.1)
-- OCR only runs if `page.get_text()` returns empty
+### Environment Variables
+- `REDIS_URL`: Enables background job queues
+- `S3_BUCKET`/`S3_PREFIX`: Enables cloud file storage
+- `MAX_CONTENT_LENGTH`: Upload size limit (default 5MB)
+- `PAGE_SEGMENT_SIZE`: Memory optimization for large PDFs (default 4)
 
-### Error Handling
-- Graceful Redis/S3 failures with local fallbacks
-- File size limits via `MAX_CONTENT_LENGTH` (default 10MB)
-- Comprehensive logging with structured JSON progress updates
+### Dependencies & System Requirements
+- **Tesseract OCR**: Must be on PATH, auto-detected at startup
+- **Python packages**: Flask, pandas, PyMuPDF, pytesseract, redis, rq, boto3
+- **OCR fallback**: Only runs when `page.get_text()` returns empty
 
-### Performance Considerations  
-- Regex patterns pre-compiled for all fields
-- OCR at 150 DPI only when text extraction fails
-- Progress updates every 10 pages to avoid overhead
-- Atomic file operations for progress persistence
+## Testing & Debugging
 
-## Testing Strategy
-Tests are minimal placeholders in `tests/`. When adding features:
-- Test both Redis and in-memory progress modes
-- Verify S3 vs local file serving paths  
-- Mock OCR dependencies for CI environments
-- Test field extraction with real PDF samples in `app/exports/`
+### Current Test Coverage
+Tests in `tests/` are minimal placeholders. Key areas needing coverage:
+- Field extraction accuracy with real PDF samples
+- Redis vs in-memory progress mode switching  
+- S3 vs local file serving fallbacks
+- OCR dependency mocking for CI
+
+### Performance Characteristics
+- **Memory**: Page segmentation prevents large PDF memory spikes
+- **Speed**: Regex patterns pre-compiled, OCR only on text-extraction failure
+- **Progress**: Updates every 10 pages to minimize I/O overhead
+- **Concurrency**: Thread-safe progress updates, atomic JSON file operations
